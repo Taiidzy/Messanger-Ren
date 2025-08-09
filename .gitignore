@@ -150,3 +150,6 @@ dmypy.json
 
 # Messenger storage
 backend/core-api/storage/*
+
+# Postgress
+data/
