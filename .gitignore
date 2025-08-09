@@ -149,7 +149,7 @@ venv.bak/
 dmypy.json 
 
 # Messenger storage
-backend/core-api/storage/*
+storage/
 
 # Postgress
 data/
