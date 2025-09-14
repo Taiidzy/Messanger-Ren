@@ -24,15 +24,15 @@ services/
 
 ## Детали сервисов
 
-| Сервис | Язык | Статус |
-|--------|------|--------|
-| [auth-service](./chat-service/README.md) | TypeScript | 🟡 В разработке |
-| [chat-service](./chat-service/README.md) | TypeScript | 🔴 Не начат |
-| [media-service](./media-service/README.md) | TypeScript | 🔴 Не начат |
-| [message-service](./message-service/README.md) | TypeScript | ✅ Готов |
-| [online-service](./online-service/README.md) | TypeScript | ✅ Готов |
-| [profiles-service](./profiles-service/README.md) | TypeScript | 🔴 Не начат |
-| [storage-service](./storage-service/README.md) | TypeScript | 🔴 Не начат |
+| Сервис                                           | Язык       | Статус           |
+|--------------------------------------------------|------------|------------------|
+| [auth-service](./chat-service/README.md)         |    ----    | 🟡 В разработке |
+| [chat-service](./chat-service/README.md)         |    ----    | 🔴 Не начат     |
+| [media-service](./media-service/README.md)       |    ----    | 🔴 Не начат     |
+| [message-service](./message-service/README.md)   |     Go     | ✅ Готов        |
+| [online-service](./online-service/README.md)     |     JS     | ✅ Готов        |
+| [profiles-service](./profiles-service/README.md) |    ----    | 🔴 Не начат     |
+| [storage-service](./storage-service/README.md)   |    ----    | 🔴 Не начат     |
 
 ### Легенда статусов:
 - ✅ Готов - сервис завершен и протестирован
