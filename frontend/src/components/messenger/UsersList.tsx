@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Scrollbar } from "react-scrollbars-custom";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -25,6 +25,7 @@ interface UsersListProps {
   contactStatuses: ContactStatus[]; // Массив статусов контактов
   onSelectUser: (user: User) => void; // Функция обратного вызова при выборе пользователя
   onClose?: () => void; // Новый проп для закрытия (опционально)
+  onChatCreated?: () => void | Promise<void>;
 }
 
 const UsersList: React.FC<UsersListProps> = ({
@@ -32,6 +33,7 @@ const UsersList: React.FC<UsersListProps> = ({
   contactStatuses,
   onSelectUser,
   onClose,
+  onChatCreated,
 }) => {
   // Получаем текущую тему и её конфигурацию
   const { theme } = useTheme();
@@ -42,29 +44,8 @@ const UsersList: React.FC<UsersListProps> = ({
 
   return (
     // Основная карточка списка пользователей
-    <div className={`h-full overflow-hidden rounded-3xl border-2 border-white/30 shadow-2xl bg-white/30 dark:bg-gray-900/30 backdrop-blur-2xl hover:shadow-[0_8px_40px_rgba(139,92,246,0.10)] hover:border-purple-400/40 ring-1 ring-white/20 ring-inset before:content-[''] before:absolute before:inset-0 before:rounded-3xl before:pointer-events-none before:shadow-[inset_0_0_40px_0_rgba(255,255,255,0.10)] transition-all duration-500 relative z-10`}>
-      {/* Кнопка закрытия только на мобильных */}
-      <AnimatePresence>
-        {onClose && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.2 }}
-            className="md:hidden absolute top-3 right-16 z-20 p-2 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-lg border border-gray-200 dark:border-gray-600 hover:bg-white dark:hover:bg-gray-800 transition-all duration-200"
-            onClick={onClose}
-            aria-label="Закрыть список чатов"
-          >
-            <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
-              <path
-                stroke="currentColor"
-                strokeWidth="2"
-                d="M6 6l12 12M6 18L18 6"
-              />
-            </svg>
-          </motion.button>
-        )}
-      </AnimatePresence>
+    <div className={`h-full overflow-hidden rounded-3xl glass transition-all duration-300 relative z-10`}>
+      {/* Кнопка закрытия перенесена в заголовок MobileContent */}
 
       {/* Анимированный контейнер с эффектом появления */}
       {isMobile ? (
@@ -86,6 +67,7 @@ const UsersList: React.FC<UsersListProps> = ({
             onClose={onClose}
             theme={theme}
             contactStatuses={contactStatuses}
+            onChatCreated={onChatCreated}
           />
         </motion.div>
       ) : (
@@ -101,6 +83,7 @@ const UsersList: React.FC<UsersListProps> = ({
             onSelectUser={onSelectUser}
             theme={theme}
             contactStatuses={contactStatuses}
+            onChatCreated={onChatCreated}
           />
         </motion.div>
       )}
@@ -113,11 +96,10 @@ const MobileContent: React.FC<{
   users: User[];
   onSelectUser: (user: User) => void;
   onClose?: () => void;
-  theme: "light" | "dark" | "orange" | "cosmic";
+  theme: "light" | "dark";
   contactStatuses: ContactStatus[]; //
-}> = ({ users, onSelectUser, onClose, theme, contactStatuses }) => { //
-  
-  const currentTheme = themes[theme];
+  onChatCreated?: () => void | Promise<void>;
+}> = ({ users, onSelectUser, onClose, theme, contactStatuses, onChatCreated }) => { //
   return (
     <>
       {/* Заголовок списка пользователей */}
@@ -128,12 +110,29 @@ const MobileContent: React.FC<{
         transition={{ delay: 0.1, duration: 0.3 }}
       >
         {/* Карточка с заголовком "Чаты" */}
-        <Card className={`rounded-xl border bg-card text-card-foreground shadow ${theme === "orange" ? currentTheme.card : ""}`}>
+        <Card className={`rounded-xl border bg-white/30 dark:bg-white/10 backdrop-blur-2xl text-card-foreground shadow`}> 
           <h1 className={`text-2xl font-bold p-2 ${getTextStyle(theme)}`}>Чаты</h1>
         </Card>
-        {/* Компонент настроек */}
-        <SearchUser />
-        <Settings />
+        {/* Группа кнопок действий справа */}
+        <div className="flex items-center gap-2">
+          {onClose && (
+            <button
+              className="md:hidden p-2 rounded-full glass hover:bg-white/50 dark:hover:bg-gray-800/60 transition-all duration-200"
+              onClick={onClose}
+              aria-label="Закрыть список чатов"
+            >
+              <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+                <path
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  d="M6 6l12 12M6 18L18 6"
+                />
+              </svg>
+            </button>
+          )}
+          <SearchUser onChatCreated={onChatCreated} />
+          <Settings />
+        </div>
       </motion.div>
 
       {/* Область прокрутки для списка пользователей */}
@@ -158,14 +157,7 @@ const MobileContent: React.FC<{
         }}
         thumbYProps={{
           style: {
-            backgroundColor:
-              theme === "cosmic"
-                ? "rgba(139, 92, 246, 0.3)"
-                : theme === "dark"
-                  ? "rgba(156, 163, 175, 0.3)"
-                  : theme === "orange"
-                    ? "rgba(251, 146, 60, 0.3)"
-                    : "rgba(209, 213, 219, 0.3)",
+            backgroundColor: theme === "dark" ? "rgba(156, 163, 175, 0.3)" : "rgba(209, 213, 219, 0.3)",
             borderRadius: "9999px",
             width: "8px",
             transition: "background-color 0.2s ease",
@@ -210,11 +202,10 @@ const MobileContent: React.FC<{
 const DesktopContent: React.FC<{
   users: User[];
   onSelectUser: (user: User) => void;
-  theme: "light" | "dark" | "orange" | "cosmic";
+  theme: "light" | "dark";
   contactStatuses: ContactStatus[]; //
-}> = ({ users, onSelectUser, theme, contactStatuses }) => { //
-
-  const currentTheme = themes[theme];
+  onChatCreated?: () => void | Promise<void>;
+}> = ({ users, onSelectUser, theme, contactStatuses, onChatCreated }) => { //
   return (
     <>
       {/* Заголовок списка пользователей */}
@@ -225,12 +216,14 @@ const DesktopContent: React.FC<{
         transition={{ delay: 0.1, duration: 0.3 }}
       >
         {/* Карточка с заголовком "Чаты" */}
-        <Card className={`rounded-xl border bg-card text-card-foreground shadow ${theme === "orange" ? currentTheme.card : ""}`}>
+        <Card className={`rounded-xl border bg-white/30 dark:bg-white/10 backdrop-blur-2xl text-card-foreground shadow`}>
           <h1 className={`text-2xl font-bold p-2 ${getTextStyle(theme)}`}>Чаты</h1>
         </Card>
-        {/* Компонент настроек */}
-        <SearchUser />
-        <Settings />
+        {/* Группа кнопок действий справа */}
+        <div className="flex items-center gap-2">
+          <SearchUser onChatCreated={onChatCreated} />
+          <Settings />
+        </div>
       </motion.div>
 
       {/* Область прокрутки для списка пользователей */}
@@ -255,14 +248,7 @@ const DesktopContent: React.FC<{
         }}
         thumbYProps={{
           style: {
-            backgroundColor:
-              theme === "cosmic"
-                ? "rgba(139, 92, 246, 0.3)"
-                : theme === "dark"
-                  ? "rgba(156, 163, 175, 0.3)"
-                  : theme === "orange"
-                    ? "rgba(251, 146, 60, 0.3)"
-                    : "rgba(209, 213, 219, 0.3)",
+            backgroundColor: theme === "dark" ? "rgba(156, 163, 175, 0.3)" : "rgba(209, 213, 219, 0.3)",
             borderRadius: "9999px",
             width: "8px",
             transition: "background-color 0.2s ease",
@@ -305,7 +291,7 @@ const DesktopContent: React.FC<{
 // Компонент карточки пользователя
 const UserCard: React.FC<{
   user: User;
-  theme: "light" | "dark" | "orange" | "cosmic";
+  theme: "light" | "dark";
   status?: ContactStatus;
 }> = ({ user, theme, status }) => {
   const { privateKey } = useCrypto();
@@ -369,16 +355,10 @@ const UserCard: React.FC<{
   return (
     <Button
       variant="ghost"
-      className={`w-full p-0 h-auto hover:bg-transparent cursor-pointer rounded-xl border bg-card text-card-foreground shadow ${theme === "orange" ? currentTheme.card : ""}`}
+      className={`w-full p-0 h-auto hover:bg-transparent cursor-pointer rounded-xl border bg-card text-card-foreground shadow ${currentTheme.card}`}
     >
       <Card
-        className={`w-full bg-gray-50/0 border-1 p-2 transition-all duration-200 ${
-          theme === "cosmic"
-            ? "hover:bg-purple-500/10 hover:shadow-lg"
-            : theme === "dark"
-              ? "hover:bg-gray-800/50 hover:shadow-lg"
-              : "hover:bg-gray-100/50 hover:shadow-lg"
-        }`}
+        className={`w-full bg-gray-50/0 border-1 p-2 transition-all duration-200 ${ theme === "dark" ? "hover:bg-gray-800/50 hover:shadow-lg" : "hover:bg-gray-100/50 hover:shadow-lg" }`}
       >
         <CardHeader className="justify-between p-2">
           <div className="flex items-center gap-3">

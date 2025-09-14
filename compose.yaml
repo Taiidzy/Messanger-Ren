@@ -1,0 +1,211 @@
+services:
+
+# ======================= BACKEND =======================
+
+  backend:
+    build:
+      context: ./backend/core-api
+    container_name: backend
+    labels:
+    - "logging=promtail"
+    restart: always
+    volumes:
+      - ./backend/core-api/storage:/backend/core-api/storage/
+      - ./backend/core-api/storage/avatars/:/backend/core-api/storage/avatars
+      - ./backend/core-api/storage/chats:/backend/core-api/storage/chats
+
+    environment:
+
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SERVER: ${POSTGRES_SERVER}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+
+      # LOG_LEVEL: INFO
+      # API_HOST: 0.0.0.0
+      # API_PORT: 8000
+      # RELOAD: true
+      # UVICORN_LOG_LEVEL: info
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    ports:
+      - "8000:8000"
+
+    expose: 
+      - 8000
+    networks: 
+      - app-network
+    depends_on:
+      - postgres
+
+
+# ======================= Message Service =======================
+
+  message-service:
+    build:
+      context: ./services/message-service # Указывает на текущую директорию, где лежит Dockerfile
+    container_name: message-service
+    restart: always
+    environment:
+      PORT: ${PORT}
+      CORE_API_URL: ${CORE_API_URL}
+      REDIS_URL: ${REDIS_URL}
+    expose:
+      - 3000
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - backend
+
+# ======================= DATABASE =======================
+
+  postgres:
+    image: postgres
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    expose:
+      - 5432
+    networks:
+      - app-network
+
+# ======================= NGINX ==========================
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/certs:/etc/letsencrypt
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx/logs:/var/log/nginx               # Логи пробрасываем
+      - ./nginx/blacklist.conf:/etc/nginx/blacklist.conf  # Файл с заблокированными IP
+    networks:
+      - app-network
+    depends_on:
+      - backend
+      - message-service
+
+# ======================= FAIL2BAN ==========================
+
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    container_name: fail2ban
+    restart: always
+    volumes:
+      - ./nginx/logs:/var/log/nginx
+      - ./fail2ban:/data
+    environment:
+      - TZ=Europe/Moscow
+    networks:
+      - app-network
+
+# ======================= Prometheus ==========================
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+    depends_on:
+      - backend  # Добавляем зависимость
+
+# ======================= Grafana ==========================
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    volumes:
+      - ./grafana:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - app-network
+    depends_on:
+      - prometheus  # Добавляем зависимость
+
+# ======================= Redis ==========================
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis/redis-data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    networks:
+      - app-network
+
+# ======================= Loki ==========================
+
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml
+      - ./loki/data:/loki
+      - ./loki/data/wal:/loki/wal
+    networks:
+      - app-network
+
+
+# ======================= Promtail ==========================
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: promtail
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - app-network
+
+# ======================= NETWORKS ==========================
+
+networks:
+  app-network:
+    driver: bridge

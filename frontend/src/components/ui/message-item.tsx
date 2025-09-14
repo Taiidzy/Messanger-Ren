@@ -7,7 +7,7 @@ import { unwrapSymmetricKey } from "@/components/utils/crypto";
 import { useCrypto } from "@/components/context/CryptoContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { formatTime, formatFileSize, getFileIcon } from "@/components/utils/format";
+import { formatTime, formatFileSize, getFileIcon, formatTimeHHMM } from "@/components/utils/format";
 import Player from "@/components/ui/player";
 import { fetchAndDecryptFile } from "@/components/api/chunkService";
 import { motion } from "framer-motion";
@@ -469,11 +469,18 @@ const MessageItem: React.FC<MessageItemProps> = ({
           )}
         </div>
 
-        {/* Время сообщения */}
+        {/* Время сообщения и пометка об изменении */}
         <div className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'} mt-1`}>
-          <span className={`text-xs whitespace-nowrap ${currentTheme.timeText}`}>
-            {formatTime(message.created_at)}
-          </span>
+          <div className="flex flex-col text-left">
+            <span className={`text-xs whitespace-nowrap ${currentTheme.timeText}`}>
+              {formatTime(message.created_at)}
+            </span>
+            {message.edited_at && (
+              <span className={`text-[10px] opacity-80 ${currentTheme.timeText}`}>
+                изменено в {formatTimeHHMM(message.edited_at)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>

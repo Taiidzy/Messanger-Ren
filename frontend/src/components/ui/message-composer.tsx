@@ -349,14 +349,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
               }}
               thumbXProps={{
                 style: {
-                  backgroundColor:
-                    theme === "cosmic"
-                      ? "rgba(139, 92, 246, 0.3)"
-                      : theme === "dark"
-                        ? "rgba(156, 163, 175, 0.3)"
-                        : theme === "orange"
-                          ? "rgba(251, 146, 60, 0.3)"
-                          : "rgba(209, 213, 219, 0.3)",
+                  backgroundColor: theme === "dark" ? "rgba(156, 163, 175, 0.3)" : "rgba(209, 213, 219, 0.3)",
                   borderRadius: "9999px",
                   height: "8px",
                   transition: "background-color 0.2s ease",
@@ -427,7 +420,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
 
         <div className="flex items-center gap-2">
           <Input
-            className={`pl-9 relative h-15 flex-1 ${theme === "orange" ? currentTheme.card : ""}`}
+            className={`pl-9 relative h-12 flex-1 glass`}
             placeholder="Введите сообщение..."
             type="text"
             value={message}
@@ -436,7 +429,8 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
             aria-label="Текст сообщения"
           />
           <Button
-            className={`${currentTheme.background} hover:opacity-60 cursor-pointer z-10`}
+            variant="glass"
+            className={`cursor-pointer z-10`}
             onClick={handleSendMessage}
             disabled={(!message.trim() && files.length === 0) || isSending}
             aria-label="Отправить сообщение"
@@ -469,7 +463,8 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
             )}
           </Button>
           <Button
-            className={`${currentTheme.background} hover:opacity-60 cursor-pointer z-10`}
+            variant="glass"
+            className={`cursor-pointer z-10`}
             onClick={() => fileInputRef.current?.click()}
             disabled={files.length >= MAX_FILES}
             aria-label="Прикрепить файл"

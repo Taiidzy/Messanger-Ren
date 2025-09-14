@@ -1,4 +1,11 @@
 import React, { useEffect, useState } from "react";
+/**
+ * Главная страница мессенджера.
+ * Отвечает за:
+ * - загрузку списка чатов
+ * - подключение клиента статусов (онлайн/оффлайн)
+ * - роутинг между списком пользователей и активным чатом (включая мобильный режим с выезжающей панелью)
+ */
 import { motion, AnimatePresence } from "framer-motion";
 
 import UsersList from "@/components/messenger/UsersList";
@@ -50,6 +57,16 @@ const MainPage: React.FC = () => {
     fetchUsers();
   }, [showToast, navigate]);
 
+  // Делаем рефетч доступным для дочерних компонентов
+  const refreshUsers = React.useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const chatUsers = await getChat(token);
+    if (chatUsers && chatUsers !== 401) {
+      setUsers(chatUsers);
+    }
+  }, []);
+
   useEffect(() => {
     setCompanionIds(users.map((user) => user.companion_id));
   }, [users]);
@@ -95,23 +112,25 @@ const MainPage: React.FC = () => {
   return (
     <Background>
       <AnimatePresence>
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8, x: -20 }}
-          animate={{ opacity: 1, scale: 1, x: 0 }}
-          exit={{ opacity: 0, scale: 0.8, x: -20 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="md:hidden fixed top-4 left-4 z-50 bg-white dark:bg-gray-800 rounded-full p-2 shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
-          onClick={() => setIsUsersListOpen(true)}
-          aria-label="Открыть список чатов"
-        >
-          <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
-            <path
-              stroke="currentColor"
-              strokeWidth="2"
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </motion.button>
+        {!isUsersListOpen && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8, x: -20 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.8, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="md:hidden fixed top-4 left-4 z-50 glass rounded-full p-2 hover:bg-white/50 dark:hover:bg-gray-800/60 transition-colors duration-200"
+            onClick={() => setIsUsersListOpen(true)}
+            aria-label="Открыть список чатов"
+          >
+            <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
+              <path
+                stroke="currentColor"
+                strokeWidth="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </motion.button>
+        )}
       </AnimatePresence>
 
       <div className="flex flex-row gap-4 h-[calc(100vh-2rem)] overflow-hidden p-4">
@@ -122,6 +141,7 @@ const MainPage: React.FC = () => {
               setSelectedUser(user);
             } }
             contactStatuses={contactStatuses}
+            onChatCreated={refreshUsers}
           />
         </div>
 
@@ -144,7 +164,7 @@ const MainPage: React.FC = () => {
               />
 
               <motion.div
-                className="relative w-4/5 max-w-xs h-full bg-white dark:bg-gray-900 shadow-xl"
+                className="relative w-4/5 max-w-xs h-full glass"
                 initial={{ x: "-100%" }}
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
@@ -162,6 +182,7 @@ const MainPage: React.FC = () => {
                   }}
                   onClose={() => setIsUsersListOpen(false)}
                   contactStatuses={contactStatuses}
+                  onChatCreated={refreshUsers}
                 />
               </motion.div>
             </motion.div>

@@ -6,6 +6,7 @@ import {
   getTextStyle,
 } from "@/components/theme/ThemeProvider";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { searchUser } from "@/components/api/User";
 
 interface UserData {
   login?: string;
@@ -34,7 +36,11 @@ interface UserData {
   avatar?: string;
 }
 
-const SearchUser: React.FC = () => {
+type SearchUserProps = {
+  onChatCreated?: () => void | Promise<void>;
+};
+
+const SearchUser: React.FC<SearchUserProps> = ({ onChatCreated }) => {
   const { theme } = useTheme();
   const currentTheme = themes[theme];
   const [users, setUsers] = React.useState<UserData[]>([]);
@@ -74,35 +80,21 @@ const SearchUser: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/user/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          login: loginQuery,
-        }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          showToast({
-            variant: "destructive",
-            title: "Ошибка",
-            description: "Вы не авторизованы",
-            icon: "alertCircle",
-          });
-          setTimeout(async () => {
-            await logoutUser();
-            navigate("/login");
-          }, 1000);
-          return;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await searchUser(loginQuery, token);
+      if (data === 401) {
+        showToast({
+          variant: "destructive",
+          title: "Ошибка",
+          description: "Вы не авторизованы",
+          icon: "alertCircle",
+        });
+        setTimeout(async () => {
+          await logoutUser();
+          navigate("/login");
+        }, 1000);
+        return;
       }
-
-      const data = await response.json();
+      
       setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Ошибка при поиске пользователей:", error);
@@ -155,6 +147,13 @@ const SearchUser: React.FC = () => {
         setSearchQuery("");
         setUsers([]);
         setIsCreatingChat(false);
+        // Обновляем список чатов на главной странице
+        try {
+          await onChatCreated?.();
+        } catch (e) {
+          // fail-safe: даже если колбэк упадет, продолжим
+          console.error("onChatCreated error:", e);
+        }
         navigate("/");
       } else {
         throw new Error(`Ошибка создания чата: ${result}`);
@@ -184,7 +183,8 @@ const SearchUser: React.FC = () => {
         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
           <Button
             size="icon"
-            className={`relative cursor-pointer overflow-hidden hover:bg-white/10 ${currentTheme.background}`}
+            variant="glass"
+            className={`relative cursor-pointer overflow-hidden ${currentTheme.border}`}
           >
             <Search
               className={`h-5 w-5 relative z-10 ${theme === "dark" ? "text-black" : "text-white"}`}
@@ -212,8 +212,8 @@ const SearchUser: React.FC = () => {
 
         <div className="py-4">
           <div className="relative">
-            <input
-              className={`border rounded px-3 py-2 text-base w-full ${currentTheme.text} ${currentTheme.border} bg-transparent focus:outline-none focus:ring-2 focus:ring-primary/50`}
+            <Input
+              className={`w-full ${currentTheme.text} ${currentTheme.border} bg-white/20 dark:bg-black/20 backdrop-blur-xl placeholder:opacity-60`}
               onChange={handleSearchChange}
               value={searchQuery}
               placeholder="Введите логин пользователя (минимум 2 символа)..."
@@ -248,14 +248,7 @@ const SearchUser: React.FC = () => {
           }}
           thumbYProps={{
             style: {
-              backgroundColor:
-                theme === "cosmic"
-                  ? "rgba(139, 92, 246, 0.3)"
-                  : theme === "dark"
-                    ? "rgba(156, 163, 175, 0.3)"
-                    : theme === "orange"
-                      ? "rgba(251, 146, 60, 0.3)"
-                      : "rgba(209, 213, 219, 0.3)",
+              backgroundColor: theme === "dark" ? "rgba(156, 163, 175, 0.3)" : "rgba(209, 213, 219, 0.3)",
               borderRadius: "9999px",
               width: "8px",
               transition: "background-color 0.2s ease",
@@ -286,13 +279,7 @@ const SearchUser: React.FC = () => {
                 >
                   {/* Карточка пользователя */}
                   <Card
-                    className={`w-full bg-gray-50/0 border-1 p-2 transition-colors duration-200 ${
-                      theme === "cosmic"
-                        ? "hover:bg-purple-500/10"
-                        : theme === "dark"
-                          ? "hover:bg-gray-800/50"
-                          : "hover:bg-gray-100/50"
-                    }`}
+                    className={`w-full bg-gray-50/0 border-1 p-2 transition-colors duration-200 ${ theme === "dark" ? "hover:bg-gray-800/50" : "hover:bg-gray-100/50" }`}
                   >
                     {/* Заголовок карточки пользователя */}
                     <CardHeader className="justify-between p-2">

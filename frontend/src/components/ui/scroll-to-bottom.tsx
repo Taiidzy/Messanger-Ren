@@ -42,17 +42,9 @@ const ScrollToBottom: React.FC<ScrollToBottomProps> = ({
             className="h-12 w-12 rounded-full shadow-lg border-0 flex items-center justify-center cursor-pointer"
             style={{
               backgroundColor:
-                theme === "dark"
-                  ? "rgba(55, 65, 81, 0.9)"
-                  : theme === "orange"
-                    ? "rgba(251, 146, 60, 0.9)"
-                    : "rgba(255, 255, 255, 0.9)",
+                theme === "dark" ? "rgba(55, 65, 81, 0.9)" : "rgba(255, 255, 255, 0.9)",
               border:
-                theme === "dark"
-                  ? "1px solid rgba(75, 85, 99, 0.3)"
-                  : theme === "orange"
-                    ? "1px solid rgba(251, 146, 60, 0.3)"
-                    : "1px solid rgba(209, 213, 219, 0.3)",
+                theme === "dark" ? "1px solid rgba(75, 85, 99, 0.3)" : "1px solid rgba(209, 213, 219, 0.3)",
             }}
           >
             <motion.div
@@ -68,12 +60,7 @@ const ScrollToBottom: React.FC<ScrollToBottomProps> = ({
               <ChevronDown
                 className="h-6 w-6"
                 style={{
-                  color:
-                    theme === "dark"
-                      ? "#ffffff"
-                      : theme === "orange"
-                        ? "#ffffff"
-                        : "#374151",
+                  color: theme === "dark" ? "#ffffff" : "#374151",
                 }}
               />
             </motion.div>

@@ -116,5 +116,42 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: "Noto Sans JP", system-ui, -apple-system, Segoe UI, Roboto,
+      Helvetica, Arial, "Zen Maru Gothic", "Apple Color Emoji",
+      "Segoe UI Emoji", "Segoe UI Symbol";
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Utility: glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+  backdrop-filter: saturate(1.4) blur(16px);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
+  /* Исключаем внутренние артефакты по углам на светлом фоне */
+  background-clip: padding-box;
+}
+
+/* Исправление антиалиасинга на закруглениях с полупрозрачным фоном */
+.fix-antialias {
+  -webkit-mask-image: radial-gradient(#000 98%, transparent 100%);
+  mask-image: radial-gradient(#000 98%, transparent 100%);
+}
+.dark .glass {
+  background: rgba(17, 24, 39, 0.45);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

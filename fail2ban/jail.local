@@ -1,0 +1,8 @@
+[nginx-bad-requests]
+enabled  = true
+filter   = nginx-bad-requests
+logpath  = /var/log/nginx/bad_requests.log
+maxretry = 3
+findtime = 600
+bantime  = 86400
+action   = nginx-block[name=nginx-bad-requests, blacklist=/var/log/nginx/blacklist.conf]

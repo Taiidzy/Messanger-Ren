@@ -252,7 +252,7 @@ const RecoveryForm: React.FC = () => {
           </CardTitle>
           <p className={`text-sm text-center ${currentTheme.text} opacity-70`}>
             {stage === "login"
-              ? "Введите имя пользователя и ключ доступа"
+              ? "Введите логин и ключ доступа"
               : "Установите новый пароль для вашего аккаунта"}
           </p>
         </CardHeader>
@@ -261,14 +261,14 @@ const RecoveryForm: React.FC = () => {
             <form onSubmit={handleStage1Submit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="username" className={`${currentTheme.text}`}>
-                  Имя пользователя
+                  Логин
                 </Label>
                 <div className="relative">
                   <Icons.user className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="username"
                     type="text"
-                    placeholder="Введите имя пользователя"
+                    placeholder="Введите логин"
                     className="pl-9"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}

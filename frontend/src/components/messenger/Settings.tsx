@@ -278,8 +278,8 @@ const Settings: React.FC = () => {
         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
           <Button
             size="icon"
-            variant="ghost"
-            className="relative cursor-pointer overflow-hidden bg-white/5 hover:bg-white/10"
+            variant="glass"
+            className={`relative cursor-pointer overflow-hidden ${currentTheme.border}`}
           >
             <Icon
               className={`h-5 w-5 relative z-10 ${theme === "dark" ? "text-black" : "text-white"}`}

@@ -150,3 +150,14 @@ dmypy.json
 
 # Messenger storage
 backend/core-api/storage/*
+
+redis/redis-data
+nginx/logs
+nginx/certs
+fail2ban/db
+data/
+grafana/
+
+
+mobile/.gitignore
+messanger-ren.ru

@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +29,7 @@ const AccessKeyModal: React.FC<AccessKeyModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -45,9 +46,7 @@ const AccessKeyModal: React.FC<AccessKeyModalProps> = ({
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <Card
-              className={`w-full max-w-md ${currentTheme.accessKeyCard} ${currentTheme.border} border`}
-            >
+            <Card className={`w-full max-w-md glass`}>
               <CardHeader className="text-center">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900">
                   <Icons.warning className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
@@ -73,9 +72,7 @@ const AccessKeyModal: React.FC<AccessKeyModalProps> = ({
                     Ключ доступа:
                   </label>
                   <div className="flex items-center space-x-2">
-                    <div
-                      className={`flex-1 p-3 rounded-md border ${currentTheme.border} ${currentTheme.background} font-mono text-sm break-all`}
-                    >
+                    <div className={`flex-1 p-3 rounded-md glass font-mono text-sm break-all`}>
                       {accessKey}
                     </div>
                     <Button
@@ -100,7 +97,8 @@ const AccessKeyModal: React.FC<AccessKeyModalProps> = ({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };
 

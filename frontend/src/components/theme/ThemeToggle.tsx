@@ -6,18 +6,14 @@ import { Moon, Sun } from "lucide-react";
 
 // Объект с иконками для каждой темы
 const themeIcons = {
-  // light: Sun,    // Солнце для светлой темы
-  orange: Sun, // Палитра для оранжевой темы
-  dark: Moon, // Луна для темной темы
-  // cosmic: Rocket,  // Ракета для космической темы
+  dark: Moon,
+  light: Sun,
 };
 
 // Объект с названиями тем на русском языке
 const themeNames = {
-  light: "Светлая",
   dark: "Тёмная",
-  orange: "Оранжевая",
-  cosmic: "Космическая",
+  light: "Светлая",
 };
 
 // Компонент переключения тем
@@ -25,13 +21,13 @@ export const ThemeToggle: React.FC = () => {
   // Получаем текущую тему и функцию для её изменения из контекста
   const { theme, setTheme } = useTheme();
   // Получаем массив доступных тем
-  const themes = Object.keys(themeIcons) as Array<keyof typeof themeIcons>;
+  const themes = Object.keys(themeNames) as Array<keyof typeof themeNames>;
 
   return (
     // Контейнер с кнопками переключения тем
-    <div className="flex gap-2 p-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-lg">
+    <div className="flex gap-2 p-2 glass rounded-xl">
       {themes.map((t) => {
-        const Icon = themeIcons[t];
+        const Icon = themeIcons[t as keyof typeof themeIcons];
         const isActive = theme === t;
 
         return (

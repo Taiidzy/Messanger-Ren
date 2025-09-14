@@ -49,6 +49,7 @@ class LoginResponse(BaseModel):
     encryptedPrivateKeyByUser: str
     salt: str
     publicKey: str
+    user_id: int
 
 class RecoveryRequest(BaseModel):
     login: str

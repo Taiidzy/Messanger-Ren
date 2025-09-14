@@ -12,37 +12,31 @@ const Background: React.FC<BackgroundProps> = ({ children }) => {
 
   return (
     <div
-      className={`min-h-screen bg-gradient-to-br ${currentTheme.background} p-4 relative overflow-hidden`}
+      className={`min-h-screen bg-gradient-to-br ${currentTheme.background} p-2 md:p-4 relative overflow-hidden`}
       id="main"
     >
-      {/* Анимированные фоновые элементы */}
+      {/* Анимированные фоновые элементы – мягкие пятна цвета сакуры */}
       <div className="absolute inset-0 overflow-hidden z-0">
         <motion.div
-          className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-primary/20 to-transparent rounded-full blur-3xl"
+          className="absolute -top-1/3 -left-1/4 w-[60vw] h-[60vw] bg-rose-200/35 rounded-full blur-3xl"
           animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 90, 0],
+            y: [0, 20, 0],
+            scale: [1, 1.05, 1],
           }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+          transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
         />
         <motion.div
-          className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-primary/20 to-transparent rounded-full blur-3xl"
+          className="absolute -bottom-1/3 -right-1/4 w-[60vw] h-[60vw] bg-indigo-200/35 rounded-full blur-3xl"
           animate={{
-            scale: [1.2, 1, 1.2],
-            rotate: [90, 0, 90],
+            y: [0, -20, 0],
+            scale: [1.05, 1, 1.05],
           }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+          transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
         />
+        {/* стеклянная пленка поверх */}
+        <div className="absolute inset-0 bg-white/10 backdrop-blur-sm" />
       </div>
-      {children}
+      <div className="relative z-10">{children}</div>
     </div>
   );
 };

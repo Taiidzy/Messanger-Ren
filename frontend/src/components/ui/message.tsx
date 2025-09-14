@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Edit, Trash2 } from "lucide-react";
 import { getDateKey, formatDateHeader, handleDownloadFile } from "@/components/utils/format"
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 // Интерфейс для пропсов компонента Message
 interface MessageProps {
@@ -20,6 +22,11 @@ interface MessageProps {
   onImageLoad?: () => void; // Колбэк для уведомления о загрузке изображения
   onDeleteMessage?: (messageId: number) => void; // Колбэк для удаления сообщения
   onEditMessage?: (messageId: number) => void; // Колбэк для редактирования сообщения
+  editingMessageId?: number | null;
+  editedText?: string;
+  onEditedTextChange?: (value: string) => void;
+  onSaveEdit?: (messageId: number, newText: string) => void;
+  onCancelEdit?: () => void;
 }
 
 const Message: React.FC<MessageProps> = ({
@@ -29,6 +36,11 @@ const Message: React.FC<MessageProps> = ({
   onImageLoad,
   onDeleteMessage,
   onEditMessage,
+  editingMessageId,
+  editedText,
+  onEditedTextChange,
+  onSaveEdit,
+  onCancelEdit,
 }) => {
   // Получаем текущую тему и её конфигурацию
   const { theme } = useTheme();
@@ -69,7 +81,7 @@ const Message: React.FC<MessageProps> = ({
     {},
   );
 
-  const hrStyle = theme === "dark" || theme === "orange" ? currentTheme.hr : "bg-gray-200";
+  const hrStyle = theme === "dark" ? "bg-rose-200/60" : "bg-rose-200/60";
 
   // Функция для определения, нужно ли показывать контекстное меню
   const shouldShowContextMenu = (message: Messages, isCurrentUser: boolean): boolean => {
@@ -253,9 +265,9 @@ const Message: React.FC<MessageProps> = ({
       {Object.entries(groupedMessages).map(([dateKey, dateMessages]) => (
         <div key={dateKey} className="w-full">
           {/* Заголовок с датой */}
-          <div className="flex items-center justify-center my-4">
+            <div className="flex items-center justify-center my-4">
             <div
-              className={`px-4 py-1 rounded-full text-sm font-medium ${currentTheme.timeText} bg-opacity-30 ${currentTheme.background} backdrop-blur-xl shadow-md`}
+              className={`px-4 py-1 rounded-full text-sm font-medium ${currentTheme.timeText} glass`}
             >
               {formatDateHeader(dateMessages[0].created_at)}
             </div>
@@ -282,21 +294,48 @@ const Message: React.FC<MessageProps> = ({
                   key={message.id} 
                   className={`relative w-fit max-w-[80%] ${isCurrentUser ? 'ml-auto' : 'mr-auto'} animate-fade-in`}
                 >
-                  <div
-                    onContextMenu={(e) => handleContextMenu(e, message.id!, isCurrentUser, message)}
-                    className="cursor-pointer"
-                  >
-                    <MessageItem
-                      message={message}
-                      currentUserId={currentUserId}
-                      envelopes={message.envelopes}
-                      uploadProgress={
-                        shouldShowProgress ? uploadProgress : undefined
-                      }
-                      onImageLoad={onImageLoad}
-                      onFileUrlReady={handleFileUrlReady} // Передаем колбэк
-                    />
-                  </div>
+                  {editingMessageId === message.id ? (
+                    <div className="max-w-[320px] min-w-[130px] w-full px-4 py-2 flex flex-col gap-2 rounded-2xl shadow-md border border-white/20 backdrop-blur-xl bg-white/50 dark:bg-gray-900/50">
+                      <Input
+                        autoFocus
+                        value={editedText ?? ""}
+                        onChange={(e) => onEditedTextChange && onEditedTextChange(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && onSaveEdit) onSaveEdit(message.id!, editedText ?? "");
+                          if (e.key === 'Escape' && onCancelEdit) onCancelEdit();
+                        }}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          variant="secondary"
+                          onClick={() => onCancelEdit && onCancelEdit()}
+                        >
+                          Отмена
+                        </Button>
+                        <Button
+                          onClick={() => onSaveEdit && onSaveEdit(message.id!, editedText ?? "")}
+                        >
+                          Сохранить
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onContextMenu={(e) => handleContextMenu(e, message.id!, isCurrentUser, message)}
+                      className="cursor-pointer"
+                    >
+                      <MessageItem
+                        message={message}
+                        currentUserId={currentUserId}
+                        envelopes={message.envelopes}
+                        uploadProgress={
+                          shouldShowProgress ? uploadProgress : undefined
+                        }
+                        onImageLoad={onImageLoad}
+                        onFileUrlReady={handleFileUrlReady}
+                      />
+                    </div>
+                  )}
                   
                   {/* Контекстное меню */}
                   {contextMenu.isOpen && contextMenu.messageId === message.id && (

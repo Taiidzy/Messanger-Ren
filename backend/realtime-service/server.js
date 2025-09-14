@@ -1,46 +1,39 @@
-// Импорт внешних зависимостей
+// ================== Импорты ==================
 const WebSocket = require('ws');
 const http = require('http');
-const axios = require('axios'); // Улучшенный HTTP-клиент для взаимодействия с БД
-const winston = require('winston'); // Профессиональная библиотека для логгирования
+const axios = require('axios');
+const winston = require('winston');
+const redis = require('redis');
 
-// --- Конфигурация логгера (Winston) ---
+// ================== Логгер ==================
 const logger = winston.createLogger({
-  level: 'info', // Минимальный уровень логов для отображения (info, warn, error)
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), // Добавляем временную метку
-    winston.format.printf(info => `${info.timestamp} ${info.level.toUpperCase()}: ${info.message}`) // Форматируем вывод
-  ),
-  transports: [
-    // В данном случае выводим все логи в консоль
-    new winston.transports.Console({
-        format: winston.format.combine(
-            winston.format.colorize(), // Раскрашиваем вывод для наглядности
-            winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
-        )
-    }),
-    // При необходимости можно добавить сохранение логов в файл:
-    // new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    // new winston.transports.File({ filename: 'combined.log' }),
-  ],
-});
+    level: 'info',
+    format: winston.format.combine(
+      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+      winston.format.printf(info => `${info.timestamp} ${info.level.toUpperCase()}: ${info.message}`)
+    ),
+    transports: [new winston.transports.Console({ format: winston.format.combine(winston.format.colorize(), winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)) })],
+  });
 
-// --- Константы для типов сообщений ---
+// ================== Типы сообщений ==================
 const MESSAGE_TYPES = {
-    // Существующие типы для чата
     REGISTER: 'register',
     MESSAGE: 'message',
+    EDIT_MESSAGE: 'edit_message',
+    DELETE_MESSAGE: 'delete_message',
     REGISTERED: 'registered',
     NEW_MESSAGE: 'new_message',
     MESSAGE_SENT: 'message_sent',
     ERROR: 'error',
-    
-    // Новые типы для статуса онлайн
     STATUS_REGISTER: 'status_register',
     STATUS_REGISTERED: 'status_registered',
     STATUS_UPDATE: 'status_update',
-    CONTACT_STATUS: 'contact_status'
+    CONTACT_STATUS: 'contact_status',
+    MESSAGE_DELETED: 'message_deleted',
+    MESSAGE_EDITED: 'message_edited',
 };
+
+// ================== ChatServer ==================
 
 /**
  * Класс ChatServer управляет WebSocket-соединениями, комнатами чатов, 
@@ -61,43 +54,52 @@ class ChatServer {
         this.dbServerUrl = dbServerUrl;
         this.authServerUrl = authServerUrl;
 
-        // Map для хранения данных о клиентах чата. Ключ - объект WebSocket (ws), значение - информация о клиенте.
+        // Map для хранения локальных WebSocket соединений (не может быть заменено на Redis)
+        // Ключ - объект WebSocket (ws), значение - информация о клиенте
         this.clients = new Map();
-
-        // Map для группировки клиентов по чатам. Ключ - ID чата, значение - Set объектов WebSocket.
-        this.chatRooms = new Map();
         
-        // --- НОВЫЕ СТРУКТУРЫ ДЛЯ СТАТУСА ОНЛАЙН ---
-        
-        // Map для хранения пользователей со статусом онлайн
-        // Ключ - user_id, значение - { ws, contacts: Set([contact_ids]), lastSeen: Date }
-        this.onlineUsers = new Map();
-        
-        // Map для быстрого поиска WebSocket по user_id
-        // Ключ - user_id, значение - WebSocket объект
-        // Map для хранения токенов и соответствующих им user_id
-        // Ключ - WebSocket, значение - { token, user_id }
-        this.tokenCache = new Map();
-        
-        // Map для быстрого поиска WebSocket по user_id
-        // Ключ - user_id, значение - WebSocket объект
+        // Map для быстрого поиска WebSocket по user_id (локально)
         this.userConnections = new Map();
         
-        // НОВОЕ: Map для хранения информации о последнем времени онлайн пользователей
-        // Ключ - user_id, значение - { lastSeen: string, contacts: Set([contact_ids]) }
-        this.offlineUsers = new Map();
+        // Map для хранения токенов и соответствующих им user_id (локально)
+        this.tokenCache = new Map();
+        
+        // Инициализация Redis клиента
+        this.redisClient = null;
         
         this.init();
     }
     
     /**
-     * Инициализирует и запускает HTTP и WebSocket серверы.
+     * Инициализирует Redis соединение и запускает HTTP и WebSocket серверы.
      */
-    init() {
-        // Создаем стандартный HTTP сервер. Он нужен как "основа" для WebSocket сервера.
+    async init() {
+        try {
+            // Инициализация Redis
+            this.redisClient = redis.createClient({
+                url: process.env.REDIS_URL || 'redis://localhost:6379'
+            });
+
+            this.redisClient.on('error', (err) => {
+                logger.error(`Redis ошибка: ${err.message}`);
+            });
+
+            this.redisClient.on('connect', () => {
+                logger.info('Подключение к Redis установлено');
+            });
+
+            await this.redisClient.connect();
+            logger.info('Redis клиент подключен успешно');
+
+        } catch (error) {
+            logger.error(`Ошибка подключения к Redis: ${error.message}`);
+            throw error;
+        }
+
+        // Создаем стандартный HTTP сервер
         this.server = http.createServer();
 
-        // Создаем WebSocket сервер, но не привязываем его напрямую к серверу, чтобы фильтровать путь
+        // Создаем WebSocket сервер
         this.wss = new WebSocket.Server({ noServer: true });
 
         // Обработка upgrade только для /ws
@@ -112,30 +114,24 @@ class ChatServer {
             }
         });
 
-        // Устанавливаем обработчик на событие 'connection' - новое подключение.
+        // Обработчик на событие 'connection'
         this.wss.on('connection', (ws, req) => {
-            // req - объект входящего запроса, можно получить IP и другие заголовки
             const ip = req.socket.remoteAddress;
             logger.info(`Новое подключение от IP: ${ip}`);
 
-            // Обработчик входящих сообщений от этого клиента
             ws.on('message', (data) => this.handleMessage(ws, data));
-
-            // Обработчик закрытия соединения
             ws.on('close', () => this.handleDisconnect(ws));
-
-            // Обработчик ошибок
             ws.on('error', (error) => logger.error(`Ошибка WebSocket: ${error.message}`));
         });
 
-        // Запускаем HTTP сервер на прослушивание указанного порта.
+        // Запускаем HTTP сервер
         this.server.listen(this.port, () => {
             logger.info(`WebSocket сервер запущен на порту ${this.port} (только путь /ws)`);
         });
     }
     
     /**
-     * Главный обработчик входящих сообщений. Парсит JSON и направляет на дальнейшую обработку.
+     * Главный обработчик входящих сообщений.
      * @param {WebSocket} ws - Экземпляр WebSocket соединения.
      * @param {Buffer} data - Входящие данные в виде Buffer.
      */
@@ -144,19 +140,21 @@ class ChatServer {
             const parsedData = JSON.parse(data.toString());
             logger.info(`Получено сообщение типа "${parsedData.type}"`);
 
-            // В зависимости от типа сообщения, вызываем соответствующий метод.
             switch (parsedData.type) {
-                // Существующие обработчики для чата
                 case MESSAGE_TYPES.REGISTER:
-                    this.registerUser(ws, parsedData);
+                    await this.registerUser(ws, parsedData);
                     break;
                 case MESSAGE_TYPES.MESSAGE:
                     await this.processMessage(ws, parsedData);
                     break;
-                    
-                // Новые обработчики для статуса онлайн
+                case MESSAGE_TYPES.DELETE_MESSAGE:
+                    await this.processDeleteMessage(ws, parsedData);
+                    break;
+                case MESSAGE_TYPES.EDIT_MESSAGE:
+                    await this.processEditMessage(ws, parsedData);
+                    break;
                 case MESSAGE_TYPES.STATUS_REGISTER:
-                    this.registerUserStatus(ws, parsedData);
+                    await this.registerUserStatus(ws, parsedData);
                     break;
                     
                 default:
@@ -164,7 +162,7 @@ class ChatServer {
                     this.sendError(ws, 'Неизвестный тип сообщения');
             }
         } catch (error) {
-            logger.error(`Ошибка обработки сообщения (невалидный JSON?): ${error.message}`);
+            logger.error(`Ошибка обработки сообщения: ${error.message}`);
             this.sendError(ws, 'Неверный формат сообщения. Ожидается JSON.');
         }
     }
@@ -185,19 +183,14 @@ class ChatServer {
         }
         
         try {
-            // Проверяем токен через auth сервер
             const user_id = await this.verifyToken(token);
             
             const clientInfo = { user_id, chat_id, ws, token };
             this.clients.set(ws, clientInfo);
             this.tokenCache.set(ws, { token, user_id });
             
-            // Если комнаты для этого чата еще нет, создаем ее.
-            if (!this.chatRooms.has(chat_id)) {
-                this.chatRooms.set(chat_id, new Set());
-            }
-            // Добавляем клиента в комнату.
-            this.chatRooms.get(chat_id).add(ws);
+            // Добавляем клиента в комнату чата в Redis
+            await this.addToChatRoom(chat_id, user_id);
             
             logger.info(`Пользователь ${user_id} подключился к чату ${chat_id}.`);
             
@@ -229,7 +222,6 @@ class ChatServer {
             return;
         }
         
-        // Получаем фактические данные сообщения из вложенного поля 'data'
         const messagePayload = parsedData.data;
 
         const newMessage = {
@@ -244,23 +236,19 @@ class ChatServer {
             nonce: messagePayload.nonce || '',
             metadata: messagePayload.metadata || null,
             envelopes: messagePayload.envelopes || {},
-            metadata: messagePayload.metadata || null
         };
         
         logger.info(`Обработка сообщения от user_id: ${newMessage.sender_id} в chat_id: ${newMessage.chat_id}`);
         
         try {
-            // 1. Сохраняем сообщение в базу данных
             const savedMessage = await this.saveMessageToDatabase(newMessage);
             
-            // 2. Обновляем ID сообщения на тот, который вернула БД
             const messageWithDbId = {
                 ...newMessage,
                 id: savedMessage.message_id || newMessage.id
             };
             
-            // 3. Рассылаем сообщение всем участникам чата (включая подтверждение отправителю)
-            this.broadcastToChat(clientInfo.chat_id, messageWithDbId, ws);
+            await this.broadcastToChat(clientInfo.chat_id, messageWithDbId, ws);
             
         } catch (error) {
             logger.error(`Ошибка при сохранении или рассылке сообщения: ${error.message}`);
@@ -269,9 +257,9 @@ class ChatServer {
     }
     
     /**
-     * Сохраняет сообщение в БД, отправляя POST-запрос. Использует axios для простоты и надежности.
+     * Сохраняет сообщение в БД, отправляя POST-запрос.
      * @param {object} messageData - Объект сообщения для сохранения.
-     * @returns {Promise<object>} - Промис, который разрешается сохраненным объектом из ответа БД.
+     * @returns {Promise<object>} - Промис с сохраненным объектом из ответа БД.
      */
     async saveMessageToDatabase(messageData) {
         try {
@@ -281,7 +269,6 @@ class ChatServer {
             });
 
             logger.info(`Сообщение успешно сохранено в БД. Статус: ${response.status}`);
-            // Возвращаем данные, которые вернул сервер БД (может содержать, например, финальный ID)
             return response.data;
         } catch (error) {
             const errorMessage = error.response 
@@ -289,7 +276,6 @@ class ChatServer {
                 : `Сетевая ошибка: ${error.message}`;
 
             logger.error(`Ошибка запроса к БД: ${errorMessage}`);
-            // Пробрасываем ошибку выше, чтобы ее можно было обработать в processMessage
             throw new Error('Не удалось сохранить сообщение в базу данных.');
         }
     }
@@ -298,45 +284,196 @@ class ChatServer {
      * Рассылает сообщение всем участникам указанного чата.
      * @param {string|number} chatId - ID чата для рассылки.
      * @param {object} message - Объект сообщения для отправки.
-     * @param {WebSocket} senderWs - Сокет отправителя, чтобы не отправлять ему то же самое сообщение.
+     * @param {WebSocket} senderWs - Сокет отправителя.
      */
-    broadcastToChat(chatId, message, senderWs) {
-        const chatClients = this.chatRooms.get(chatId);
-        
-        if (!chatClients) {
-            logger.warn(`Попытка рассылки в несуществующий чат ${chatId}`);
-            return;
-        }
-        
-        // Сообщение для всех остальных участников чата
-        const messageForOthers = JSON.stringify({
-            type: MESSAGE_TYPES.NEW_MESSAGE,
-            data: message
-        });
+    async broadcastToChat(chatId, message, senderWs) {
+        try {
+            // Получаем список участников чата из Redis
+            const chatMembers = await this.getChatMembers(chatId);
+            
+            if (!chatMembers || chatMembers.length === 0) {
+                logger.warn(`Нет участников в чате ${chatId}`);
+                return;
+            }
+            
+            const messageForOthers = JSON.stringify({
+                type: MESSAGE_TYPES.NEW_MESSAGE,
+                data: message
+            });
 
-        // Сообщение-подтверждение для отправителя (с полным сообщением для правильного отображения файлов)
-        const confirmationForSender = JSON.stringify({
-            type: MESSAGE_TYPES.NEW_MESSAGE, // Используем NEW_MESSAGE вместо MESSAGE_SENT
-            data: message
-        });
-        
-        chatClients.forEach(clientWs => {
-            // Проверяем, что клиент все еще онлайн
-            if (clientWs.readyState === WebSocket.OPEN) {
-                if (clientWs === senderWs) {
-                    // Отправляем полное сообщение отправителю для правильного отображения файлов
-                    clientWs.send(confirmationForSender);
-                } else {
-                    // Отправляем новое сообщение всем остальным
-                    clientWs.send(messageForOthers);
+            const confirmationForSender = JSON.stringify({
+                type: MESSAGE_TYPES.NEW_MESSAGE,
+                data: message
+            });
+            
+            let sentCount = 0;
+            
+            // Отправляем сообщения всем подключенным участникам
+            for (const [ws, clientInfo] of this.clients.entries()) {
+                if (clientInfo.chat_id == chatId && ws.readyState === WebSocket.OPEN) {
+                    if (ws === senderWs) {
+                        ws.send(confirmationForSender);
+                    } else {
+                        ws.send(messageForOthers);
+                    }
+                    sentCount++;
                 }
             }
-        });
+            
+            logger.info(`Сообщение разослано ${sentCount} участникам чата ${chatId}`);
+            
+        } catch (error) {
+            logger.error(`Ошибка рассылки сообщения в чат ${chatId}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Обработка удаления сообщения.
+     * @param {WebSocket} ws
+     * @param {object} parsedData { data: { chat_id, message_id } }
+     */
+    async processDeleteMessage(ws, parsedData) {
+        const clientInfo = this.clients.get(ws);
+        if (!clientInfo) {
+            this.sendError(ws, 'Пользователь не зарегистрирован.');
+            return;
+        }
+        const tokenInfo = this.tokenCache.get(ws);
+        const token = tokenInfo?.token;
+        const { chat_id, message_id } = parsedData.data || {};
+        if (!chat_id || !message_id) {
+            this.sendError(ws, 'Для удаления необходимы chat_id и message_id.');
+            return;
+        }
+        const baseUrl = process.env.CORE_API_URL || 'http://localhost:8000';
+        const url = `${baseUrl}/chat/${chat_id}/messages/${message_id}`;
+        try {
+            const resp = await axios.delete(url, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                }
+            });
+            if (resp.status === 200) {
+                await this.broadcastDeleteToChat(chat_id, message_id);
+            } else {
+                this.sendError(ws, `Не удалось удалить сообщение: ${resp.status}`);
+            }
+        } catch (error) {
+            const msg = error.response ? `HTTP ${error.response.status}` : error.message;
+            logger.error(`Ошибка удаления сообщения: ${msg}`);
+            this.sendError(ws, 'Ошибка при удалении сообщения');
+        }
+    }
+
+    /**
+     * Рассылает событие удаления сообщения всем участникам чата.
+     */
+    async broadcastDeleteToChat(chatId, messageId) {
+        try {
+            const payload = JSON.stringify({
+                type: MESSAGE_TYPES.MESSAGE_DELETED,
+                data: { message_id: messageId }
+            });
+            
+            let sentCount = 0;
+            for (const [ws, clientInfo] of this.clients.entries()) {
+                if (clientInfo.chat_id == chatId && ws.readyState === WebSocket.OPEN) {
+                    ws.send(payload);
+                    sentCount++;
+                }
+            }
+            
+            logger.info(`Удаление сообщения ${messageId} разослано ${sentCount} участникам чата ${chatId}`);
+        } catch (error) {
+            logger.error(`Ошибка рассылки удаления сообщения: ${error.message}`);
+        }
+    }
+
+    /**
+     * Обработка редактирования сообщения.
+     * @param {WebSocket} ws
+     * @param {object} parsedData { data: { id, chat_id, ciphertext, nonce, envelopes, message_type, metadata } }
+     */
+    async processEditMessage(ws, parsedData) {
+        const clientInfo = this.clients.get(ws);
+        if (!clientInfo) {
+            this.sendError(ws, 'Пользователь не зарегистрирован.');
+            return;
+        }
+        const tokenInfo = this.tokenCache.get(ws);
+        const token = tokenInfo?.token;
+        const data = parsedData.data || {};
+        const { id, chat_id } = data;
+        if (!id || !chat_id) {
+            this.sendError(ws, 'Для редактирования необходимы id и chat_id.');
+            return;
+        }
+        const baseUrl = process.env.CORE_API_URL || 'http://localhost:8000';
+        const url = `${baseUrl}/chat/${chat_id}/messages/${id}`;
         
-        logger.info(`Сообщение разослано ${chatClients.size} участникам чата ${chatId}`);
+        const payload = {};
+        if (data.ciphertext !== undefined) payload.ciphertext = data.ciphertext;
+        if (data.nonce !== undefined) payload.nonce = data.nonce;
+        if (data.envelopes !== undefined) payload.envelopes = data.envelopes;
+        if (data.message_type !== undefined) payload.message_type = data.message_type;
+        if (data.metadata !== undefined) payload.metadata = data.metadata;
+        
+        try {
+            const resp = await axios.patch(url, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                }
+            });
+            if (resp.status === 200) {
+                const editedMessage = {
+                    id: id,
+                    chat_id: chat_id,
+                    sender_id: clientInfo.user_id,
+                    ciphertext: data.ciphertext || '',
+                    nonce: data.nonce || '',
+                    envelopes: data.envelopes || {},
+                    message_type: data.message_type || 'text',
+                    metadata: data.metadata || [],
+                    edited_at: new Date().toISOString(),
+                };
+                await this.broadcastEditToChat(chat_id, editedMessage);
+            } else {
+                this.sendError(ws, `Не удалось обновить сообщение: ${resp.status}`);
+            }
+        } catch (error) {
+            const msg = error.response ? `HTTP ${error.response.status}` : error.message;
+            logger.error(`Ошибка редактирования сообщения: ${msg}`);
+            this.sendError(ws, 'Ошибка при редактировании сообщения');
+        }
+    }
+
+    /**
+     * Рассылает событие редактирования сообщения всем участникам чата.
+     */
+    async broadcastEditToChat(chatId, message) {
+        try {
+            const payload = JSON.stringify({
+                type: MESSAGE_TYPES.MESSAGE_EDITED,
+                data: message
+            });
+            
+            let sentCount = 0;
+            for (const [ws, clientInfo] of this.clients.entries()) {
+                if (clientInfo.chat_id == chatId && ws.readyState === WebSocket.OPEN) {
+                    ws.send(payload);
+                    sentCount++;
+                }
+            }
+            
+            logger.info(`Редактирование сообщения ${message.id} разослано ${sentCount} участникам чата ${chatId}`);
+        } catch (error) {
+            logger.error(`Ошибка рассылки редактирования сообщения: ${error.message}`);
+        }
     }
     
-    // --- НОВЫЕ МЕТОДЫ ДЛЯ СТАТУСА ОНЛАЙН ---
+    // --- НОВЫЕ МЕТОДЫ ДЛЯ СТАТУСА ОНЛАЙН (с Redis) ---
     
     /**
      * Проверяет токен через auth сервер и возвращает user_id.
@@ -388,52 +525,44 @@ class ChatServer {
         }
         
         try {
-            // Проверяем токен через auth сервер
             const user_id = await this.verifyToken(token);
             
+            logger.info(`Регистрируем пользователя ${user_id} со следующими контактами: [${contacts.join(', ')}]`);
+            
             // Если пользователь уже был онлайн, закрываем предыдущее соединение
-            if (this.onlineUsers.has(user_id)) {
-                const oldConnection = this.onlineUsers.get(user_id);
-                if (oldConnection.ws !== ws && oldConnection.ws.readyState === WebSocket.OPEN) {
-                    oldConnection.ws.close();
-                    logger.info(`Закрыто предыдущее соединение для пользователя ${user_id}`);
-                }
+            const existingWs = this.userConnections.get(user_id);
+            if (existingWs && existingWs !== ws && existingWs.readyState === WebSocket.OPEN) {
+                existingWs.close();
+                logger.info(`Закрыто предыдущее соединение для пользователя ${user_id}`);
             }
             
-            // Создаем Set из контактов для быстрого поиска
-            const contactsSet = new Set(contacts);
+            // Сохраняем информацию о пользователе в Redis
+            await this.setUserOnline(user_id, contacts, token);
             
-            // Сохраняем информацию о пользователе
-            this.onlineUsers.set(user_id, {
-                ws: ws,
-                contacts: contactsSet,
-                token: token,
-                lastSeen: new Date() // НОВОЕ: добавляем текущее время как время последней активности
-            });
+            // Удаляем из офлайна если был там
+            await this.removeUserOffline(user_id);
             
-            // Сохраняем связь WebSocket -> user_id для быстрого поиска
-            this.userConnections.set(ws, user_id);
+            // Сохраняем локальные связи
+            this.userConnections.set(user_id, ws);
             this.tokenCache.set(ws, { token, user_id });
             
-            // НОВОЕ: Если пользователь был в офлайне, удаляем его оттуда
-            if (this.offlineUsers.has(user_id)) {
-                this.offlineUsers.delete(user_id);
-                logger.info(`Пользователь ${user_id} удален из списка офлайн пользователей`);
-            }
-            
             logger.info(`Пользователь ${user_id} зарегистрирован для отслеживания статуса с ${contacts.length} контактами.`);
+            logger.debug(`Локальные соединения после регистрации: [${Array.from(this.userConnections.keys()).join(', ')}]`);
             
-            // Отправляем подтверждение регистрации
+            // Проверяем что данные сохранились в Redis
+            const savedInfo = await this.getUserOnlineInfo(user_id);
+            logger.debug(`Данные в Redis для пользователя ${user_id}: ${JSON.stringify(savedInfo)}`);
+            
             ws.send(JSON.stringify({
                 type: MESSAGE_TYPES.STATUS_REGISTERED,
                 message: 'Успешно зарегистрирован для отслеживания статуса.'
             }));
             
             // Уведомляем контакты о том, что пользователь стал онлайн
-            this.notifyContactsStatusChange(user_id, 'online', contactsSet);
+            await this.notifyContactsStatusChange(user_id, 'online', new Set(contacts));
             
             // Отправляем пользователю статусы его контактов
-            this.sendContactsStatuses(ws, user_id, contactsSet);
+            await this.sendContactsStatuses(ws, user_id, new Set(contacts));
             
         } catch (error) {
             logger.error(`Ошибка аутентификации при регистрации статуса: ${error.message}`);
@@ -452,40 +581,51 @@ class ChatServer {
      * @param {Set} userContacts - Контакты пользователя.
      * @param {string} [lastSeen] - Время последней активности (только для статуса 'offline').
      */
-    notifyContactsStatusChange(userId, status, userContacts, lastSeen = null) {
+    async notifyContactsStatusChange(userId, status, userContacts, lastSeen = null) {
         if (!userContacts || userContacts.size === 0) {
             logger.warn(`Не найдены контакты для пользователя ${userId}`);
             return;
         }
-        
+    
         const statusMessage = JSON.stringify({
             type: MESSAGE_TYPES.CONTACT_STATUS,
             data: {
                 user_id: userId,
                 status: status,
                 timestamp: new Date().toISOString(),
-                last_seen: lastSeen // НОВОЕ: добавляем last_seen в уведомление
+                last_seen: lastSeen
             }
         });
-        
+    
         let notifiedCount = 0;
-        
-        // Проходим по всем онлайн пользователям и проверяем, есть ли наш пользователь в их контактах
-        this.onlineUsers.forEach((onlineUserInfo, onlineUserId) => {
-            // Не уведомляем самого пользователя
-            if (onlineUserId === userId) return;
-            
-            // Проверяем, есть ли наш пользователь в контактах этого онлайн пользователя
-            if (onlineUserInfo.contacts.has(userId)) {
-                if (onlineUserInfo.ws.readyState === WebSocket.OPEN) {
-                    onlineUserInfo.ws.send(statusMessage);
-                    notifiedCount++;
+    
+        // В userConnections ключ = userId, значение = ws
+        for (const [contactUserId, contactWs] of this.userConnections.entries()) {
+            try {
+                // Пропускаем самого пользователя
+                if (contactUserId?.toString() === userId?.toString()) continue;
+    
+                // Получаем список контактов для онлайн/оффлайн пользователя (возвращает Set строк)
+                const contactContacts = await this.getUserContacts(contactUserId);
+                if (!contactContacts) continue;
+    
+                // Если в контактах есть наш пользователь — шлём уведомление
+                if (contactContacts.has(userId.toString())) {
+                    if (contactWs && contactWs.readyState === WebSocket.OPEN) {
+                        contactWs.send(statusMessage);
+                        notifiedCount++;
+                    } else {
+                        logger.debug(`Контакт ${contactUserId} найден, но ws недоступен (readyState: ${contactWs?.readyState})`);
+                    }
                 }
+            } catch (error) {
+                logger.error(`Ошибка при уведомлении контакта (contactUserId=${contactUserId}): ${error.message}`);
             }
-        });
-        
+        }
+    
         logger.info(`Уведомлено ${notifiedCount} контактов о смене статуса пользователя ${userId} на ${status}${lastSeen ? ` (last_seen: ${lastSeen})` : ''}`);
     }
+    
     
     /**
      * Отправляет пользователю статусы всех его контактов.
@@ -493,29 +633,35 @@ class ChatServer {
      * @param {string|number} userId - ID пользователя.
      * @param {Set} contacts - Set с ID контактов пользователя.
      */
-    sendContactsStatuses(ws, userId, contacts) {
+    async sendContactsStatuses(ws, userId, contacts) {
         const contactStatuses = [];
         
-        contacts.forEach(contactId => {
-            let status = 'offline';
-            let lastSeen = null;
-            
-            // ОБНОВЛЕНО: проверяем статус контакта и получаем last_seen
-            if (this.onlineUsers.has(contactId)) {
-                status = 'online';
-                lastSeen = this.onlineUsers.get(contactId).lastSeen.toISOString();
-            } else if (this.offlineUsers.has(contactId)) {
-                // Если пользователь в офлайне, получаем его последнее время активности
-                status = 'offline';
-                lastSeen = this.offlineUsers.get(contactId).lastSeen; // Уже строка
-            }
+        for (const contactId of contacts) {
+            try {
+                let status = 'offline';
+                let lastSeen = null;
                 
-            contactStatuses.push({
-                user_id: contactId,
-                status: status,
-                last_seen: lastSeen
-            });
-        });
+                const isOnline = await this.isUserOnline(contactId);
+                if (isOnline) {
+                    status = 'online';
+                    const onlineInfo = await this.getUserOnlineInfo(contactId);
+                    lastSeen = onlineInfo?.lastSeen;
+                } else {
+                    const offlineInfo = await this.getUserOfflineInfo(contactId);
+                    if (offlineInfo) {
+                        lastSeen = offlineInfo.lastSeen;
+                    }
+                }
+                
+                contactStatuses.push({
+                    user_id: contactId,
+                    status: status,
+                    last_seen: lastSeen
+                });
+            } catch (error) {
+                logger.error(`Ошибка получения статуса контакта ${contactId}: ${error.message}`);
+            }
+        }
         
         const statusesMessage = JSON.stringify({
             type: MESSAGE_TYPES.STATUS_UPDATE,
@@ -531,64 +677,75 @@ class ChatServer {
     }
     
     /**
-     * Обрабатывает отключение клиента: удаляет его из списков и из комнаты чата.
+     * Обрабатывает отключение клиента.
      * @param {WebSocket} ws - Экземпляр отключаемого WebSocket соединения.
      */
-    handleDisconnect(ws) {
-        // Логика отключения из чата
-        const clientInfo = this.clients.get(ws);
-        if (clientInfo) {
-          const { user_id, chat_id } = clientInfo;
-          const chatRoom = this.chatRooms.get(chat_id);
-          if (chatRoom) {
-            chatRoom.delete(ws);
-            if (chatRoom.size === 0) {
-              this.chatRooms.delete(chat_id);
-              logger.info(`Чат ${chat_id} пуст и был удален.`);
+    async handleDisconnect(ws) {
+        try {
+            // Логика отключения из чата
+            const clientInfo = this.clients.get(ws);
+            if (clientInfo) {
+                const { user_id, chat_id } = clientInfo;
+                await this.removeFromChatRoom(chat_id, user_id);
+                this.clients.delete(ws);
+                logger.info(`Пользователь ${user_id} отключился от чата ${chat_id}.`);
             }
-          }
-          this.clients.delete(ws);
-          logger.info(`Пользователь ${user_id} отключился от чата ${chat_id}.`);
+
+            // Логика отключения для статуса онлайн
+            const userId = this.getUserIdByWs(ws);
+            if (userId) {
+                try {
+                    // Получаем информацию о пользователе перед удалением
+                    const userInfo = await this.getUserOnlineInfo(userId);
+                    
+                    if (userInfo) {
+                        const currentTime = new Date().toISOString();
+                        
+                        // Сохраняем информацию в офлайн статусе
+                        await this.setUserOffline(userId, userInfo.contacts, currentTime);
+                        
+                        // Удаляем пользователя из онлайн списков ПЕРЕД уведомлением
+                        await this.removeUserOnline(userId);
+                        this.userConnections.delete(userId);
+                        this.tokenCache.delete(ws);
+                        
+                        // ЗАТЕМ уведомляем контакты об офлайне
+                        const contactsSet = new Set(userInfo.contacts);
+                        await this.notifyContactsStatusChange(userId, 'offline', contactsSet, currentTime);
+                        
+                        logger.info(`Пользователь ${userId} помечен как офлайн. Последняя активность: ${currentTime}`);
+                    } else {
+                        // Если userInfo не найден, просто удаляем связи
+                        await this.removeUserOnline(userId);
+                        this.userConnections.delete(userId);
+                        this.tokenCache.delete(ws);
+                    }
+                } catch (error) {
+                    logger.error(`Ошибка при обработке отключения пользователя ${userId}: ${error.message}`);
+                }
+            }
+
+            if (!clientInfo && !userId) {
+                logger.warn('Неизвестный клиент отключился.');
+            }
+        } catch (error) {
+            logger.error(`Ошибка в handleDisconnect: ${error.message}`);
         }
+    }
     
-        // ОБНОВЛЕНО: Логика отключения для статуса онлайн с сохранением lastSeen
-        const userId = this.userConnections.get(ws);
-        if (userId) {
-          // Получаем информацию о пользователе перед удалением
-          const userInfo = this.onlineUsers.get(userId);
-          
-          if (userInfo) {
-            // НОВОЕ: Сохраняем информацию о пользователе в офлайн статусе
-            const currentTime = new Date().toISOString();
-            
-            // ИСПРАВЛЕНО: Сначала сохраняем в offlineUsers
-            this.offlineUsers.set(userId, {
-              lastSeen: currentTime,
-              contacts: userInfo.contacts // Сохраняем контакты для уведомлений
-            });
-            
-            // Удаляем пользователя из онлайн списков ПЕРЕД уведомлением
-            this.onlineUsers.delete(userId);
-            this.userConnections.delete(ws);
-            this.tokenCache.delete(ws);
-            
-            // ЗАТЕМ уведомляем контакты об офлайне с указанием времени последней активности
-            this.notifyContactsStatusChange(userId, 'offline', userInfo.contacts, currentTime);
-            
-            logger.info(`Пользователь ${userId} помечен как офлайн. Последняя активность: ${currentTime}`);
-          } else {
-            // Если userInfo не найден, просто удаляем связи
-            this.onlineUsers.delete(userId);
-            this.userConnections.delete(ws);
-            this.tokenCache.delete(ws);
-          }
+    /**
+     * Получает user_id по WebSocket соединению.
+     * @param {WebSocket} ws 
+     * @returns {string|number|null}
+     */
+    getUserIdByWs(ws) {
+        for (const [userId, wsConnection] of this.userConnections.entries()) {
+            if (wsConnection === ws) {
+                return userId;
+            }
         }
-    
-        if (!clientInfo && !userId) {
-          logger.warn('Неизвестный клиент отключился.');
-        }
-      }
-    
+        return null;
+    }
     
     /**
      * Отправляет сообщение об ошибке конкретному клиенту.
@@ -604,43 +761,322 @@ class ChatServer {
         }
     }
     
+    // --- REDIS МЕТОДЫ ---
+    
+    /**
+     * Добавляет пользователя в комнату чата в Redis.
+     * @param {string|number} chatId 
+     * @param {string|number} userId 
+     */
+    async addToChatRoom(chatId, userId) {
+        try {
+            await this.redisClient.sAdd(`chatRooms:${chatId}`, userId.toString());
+            logger.debug(`Пользователь ${userId} добавлен в чат ${chatId}`);
+        } catch (error) {
+            logger.error(`Ошибка добавления в чат ${chatId}: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Удаляет пользователя из комнаты чата в Redis.
+     * @param {string|number} chatId 
+     * @param {string|number} userId 
+     */
+    async removeFromChatRoom(chatId, userId) {
+        try {
+            await this.redisClient.sRem(`chatRooms:${chatId}`, userId.toString());
+            
+            // Проверяем, остались ли участники в чате
+            const membersCount = await this.redisClient.sCard(`chatRooms:${chatId}`);
+            if (membersCount === 0) {
+                await this.redisClient.del(`chatRooms:${chatId}`);
+                logger.info(`Чат ${chatId} пуст и был удален.`);
+            }
+            
+            logger.debug(`Пользователь ${userId} удален из чата ${chatId}`);
+        } catch (error) {
+            logger.error(`Ошибка удаления из чата ${chatId}: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Получает список участников чата из Redis.
+     * @param {string|number} chatId 
+     * @returns {Promise<Array>}
+     */
+    async getChatMembers(chatId) {
+        try {
+            const members = await this.redisClient.sMembers(`chatRooms:${chatId}`);
+            return members || [];
+        } catch (error) {
+            logger.error(`Ошибка получения участников чата ${chatId}: ${error.message}`);
+            return [];
+        }
+    }
+    
+    /**
+     * Устанавливает пользователя как онлайн в Redis.
+     * @param {string|number} userId 
+     * @param {Array} contacts 
+     * @param {string} token 
+     */
+    async setUserOnline(userId, contacts, token) {
+        try {
+            const userKey = `onlineUsers:${userId}`;
+            const currentTime = new Date().toISOString();
+            
+            await this.redisClient.hSet(userKey, {
+                'lastSeen': currentTime,
+                'contacts': JSON.stringify(contacts),
+                'token': token
+            });
+            
+            logger.debug(`Пользователь ${userId} установлен как онлайн`);
+        } catch (error) {
+            logger.error(`Ошибка установки онлайн статуса для ${userId}: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Удаляет пользователя из онлайн статуса в Redis.
+     * @param {string|number} userId 
+     */
+    async removeUserOnline(userId) {
+        try {
+            await this.redisClient.del(`onlineUsers:${userId}`);
+            logger.debug(`Пользователь ${userId} удален из онлайн статуса`);
+        } catch (error) {
+            logger.error(`Ошибка удаления онлайн статуса для ${userId}: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Устанавливает пользователя как офлайн в Redis.
+     * @param {string|number} userId 
+     * @param {Array} contacts 
+     * @param {string} lastSeen 
+     */
+    async setUserOffline(userId, contacts, lastSeen) {
+        try {
+            const userKey = `offlineUsers:${userId}`;
+            
+            await this.redisClient.hSet(userKey, {
+                'lastSeen': lastSeen,
+                'contacts': JSON.stringify(contacts)
+            });
+            
+            logger.debug(`Пользователь ${userId} установлен как офлайн`);
+        } catch (error) {
+            logger.error(`Ошибка установки офлайн статуса для ${userId}: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Удаляет пользователя из офлайн статуса в Redis.
+     * @param {string|number} userId 
+     */
+    async removeUserOffline(userId) {
+        try {
+            await this.redisClient.del(`offlineUsers:${userId}`);
+            logger.debug(`Пользователь ${userId} удален из офлайн статуса`);
+        } catch (error) {
+            logger.error(`Ошибка удаления офлайн статуса для ${userId}: ${error.message}`);
+            throw error;
+        }
+    }
+    
+    /**
+     * Проверяет, онлайн ли пользователь.
+     * @param {string|number} userId 
+     * @returns {Promise<boolean>}
+     */
+    async isUserOnline(userId) {
+        try {
+            const exists = await this.redisClient.exists(`onlineUsers:${userId}`);
+            return exists === 1;
+        } catch (error) {
+            logger.error(`Ошибка проверки онлайн статуса для ${userId}: ${error.message}`);
+            return false;
+        }
+    }
+    
+    /**
+     * Получает информацию об онлайн пользователе из Redis.
+     * @param {string|number} userId 
+     * @returns {Promise<object|null>}
+     */
+    async getUserOnlineInfo(userId) {
+        try {
+            const userInfo = await this.redisClient.hGetAll(`onlineUsers:${userId}`);
+            if (Object.keys(userInfo).length === 0) {
+                return null;
+            }
+            
+            return {
+                lastSeen: userInfo.lastSeen,
+                contacts: JSON.parse(userInfo.contacts || '[]'),
+                token: userInfo.token
+            };
+        } catch (error) {
+            logger.error(`Ошибка получения онлайн информации для ${userId}: ${error.message}`);
+            return null;
+        }
+    }
+    
+    /**
+     * Получает информацию об офлайн пользователе из Redis.
+     * @param {string|number} userId 
+     * @returns {Promise<object|null>}
+     */
+    async getUserOfflineInfo(userId) {
+        try {
+            const userInfo = await this.redisClient.hGetAll(`offlineUsers:${userId}`);
+            if (Object.keys(userInfo).length === 0) {
+                return null;
+            }
+            
+            return {
+                lastSeen: userInfo.lastSeen,
+                contacts: JSON.parse(userInfo.contacts || '[]')
+            };
+        } catch (error) {
+            logger.error(`Ошибка получения офлайн информации для ${userId}: ${error.message}`);
+            return null;
+        }
+    }
+    
+    /**
+     * Получает контакты пользователя.
+     * @param {string|number} userId 
+     * @returns {Promise<Set|null>}
+     */
+    async getUserContacts(userId) {
+        try {
+            // Сначала проверяем онлайн пользователей
+            let userInfo = await this.getUserOnlineInfo(userId);
+            if (userInfo) {
+                return new Set(userInfo.contacts.map(c => c.toString()));
+            }
+            
+            // Затем проверяем офлайн пользователей
+            userInfo = await this.getUserOfflineInfo(userId);
+            if (userInfo) {
+                return new Set(userInfo.contacts.map(c => c.toString()));
+            }
+            
+            return null;
+        } catch (error) {
+            logger.error(`Ошибка получения контактов для ${userId}: ${error.message}`);
+            return null;
+        }
+    }
+    
     /**
      * Собирает и возвращает статистику по работе сервера.
-     * @returns {object} - Объект со статистикой.
+     * @returns {Promise<object>} - Объект со статистикой.
      */
-    getStats() {
-        return {
-            // Статистика чата
-            connectedClients: this.clients.size,
-            activeChats: this.chatRooms.size,
-            chatDetails: Array.from(this.chatRooms.entries()).map(([chatId, clients]) => ({
-                chatId,
-                clientsCount: clients.size,
-                users: Array.from(clients).map(ws => this.clients.get(ws)?.user_id)
-            })),
+    async getStats() {
+        try {
+            const onlineKeys = await this.redisClient.keys('onlineUsers:*');
+            const offlineKeys = await this.redisClient.keys('offlineUsers:*');
+            const chatKeys = await this.redisClient.keys('chatRooms:*');
+
+            const onlineUsersDetails = [];
+            for (const key of onlineKeys) {
+                const userData = await this.redisClient.hGetAll(key);
+                onlineUsersDetails.push({
+                    userId: key.split(':')[1],
+                    lastSeen: userData.lastSeen,
+                    contacts: JSON.parse(userData.contacts || '[]')
+                });
+            }
+
+            const offlineUsersDetails = [];
+            for (const key of offlineKeys) {
+                const userData = await this.redisClient.hGetAll(key);
+                offlineUsersDetails.push({
+                    userId: key.split(':')[1],
+                    lastSeen: userData.lastSeen,
+                    contacts: JSON.parse(userData.contacts || '[]')
+                });
+            }
+
+            return {
+                connectedClients: this.clients.size,
+                activeChats: chatKeys.length,
+                onlineUsers: onlineKeys.length,
+                onlineUsersDetails,
+                offlineUsers: offlineKeys.length,
+                offlineUsersDetails
+            };
+        } catch (error) {
+            logger.error(`Ошибка получения статистики: ${error.message}`);
+            return {
+                connectedClients: this.clients.size,
+                activeChats: 0,
+                onlineUsers: 0,
+                onlineUsersDetails: [],
+                offlineUsers: 0,
+                offlineUsersDetails: [],
+                error: error.message
+            };
+        }
+    }
+    
+    /**
+     * Закрывает соединение с Redis при завершении работы сервера.
+     */
+    async close() {
+        try {
+            if (this.redisClient && this.redisClient.isOpen) {
+                await this.redisClient.quit();
+                logger.info('Соединение с Redis закрыто');
+            }
             
-            // Статистика онлайн статусов
-            onlineUsers: this.onlineUsers.size,
-            onlineUsersDetails: Array.from(this.onlineUsers.entries()).map(([userId, userInfo]) => ({
-                userId,
-                contactsCount: userInfo.contacts.size,
-                lastSeen: userInfo.lastSeen.toISOString(),
-                contacts: Array.from(userInfo.contacts),
-                hasToken: !!userInfo.token
-            })),
-            
-            // НОВОЕ: Статистика офлайн пользователей
-            offlineUsers: this.offlineUsers.size,
-            offlineUsersDetails: Array.from(this.offlineUsers.entries()).map(([userId, userInfo]) => ({
-                userId,
-                lastSeen: userInfo.lastSeen,
-                contactsCount: userInfo.contacts.size,
-                contacts: Array.from(userInfo.contacts)
-            }))
-        };
+            if (this.server) {
+                this.server.close();
+                logger.info('HTTP сервер закрыт');
+            }
+        } catch (error) {
+            logger.error(`Ошибка при закрытии соединений: ${error.message}`);
+        }
     }
 }
 
 // --- Запуск Сервера ---
 require('dotenv').config();
-new ChatServer();
+
+async function startServer() {
+    let chatServer;
+    try {
+        chatServer = new ChatServer();
+        
+        // Обработчики для корректного завершения работы
+        process.on('SIGINT', async () => {
+            logger.info('Получен SIGINT, завершаем работу сервера...');
+            if (chatServer) {
+                await chatServer.close();
+            }
+            process.exit(0);
+        });
+        
+        process.on('SIGTERM', async () => {
+            logger.info('Получен SIGTERM, завершаем работу сервера...');
+            if (chatServer) {
+                await chatServer.close();
+            }
+            process.exit(0);
+        });
+        
+    } catch (error) {
+        logger.error(`Ошибка запуска сервера: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+startServer();

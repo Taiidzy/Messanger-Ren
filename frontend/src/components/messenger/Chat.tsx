@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTheme, themes } from "@/components/theme/ThemeProvider";
@@ -53,6 +54,8 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editedMessageText, setEditedMessageText] = useState<string>("");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Исправлено: уточнен тип для scrollbarRef, чтобы TypeScript знал о методе getValues()
@@ -97,10 +100,13 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
 
   // Улучшенный обработчик прокрутки
   const handleScroll = useCallback(
-    () => { // Удаляем scrollValues из параметров, так как мы будем получать их через ref
-      if (!scrollbarRef.current) return; // Добавляем проверку наличия рефа
-
-      const { scrollTop, scrollHeight, clientHeight } = scrollbarRef.current; // Вызываем getValues() на рефе
+    () => {
+      if (!scrollbarRef.current) return;
+      // @ts-expect-error getValues есть у Scrollbar инстанса
+      const values = scrollbarRef.current.getValues?.() || {};
+      const scrollTop = values.scrollTop ?? (scrollbarRef.current as any).scrollTop ?? 0;
+      const scrollHeight = values.scrollHeight ?? (scrollbarRef.current as any).scrollHeight ?? 0;
+      const clientHeight = values.clientHeight ?? (scrollbarRef.current as any).clientHeight ?? 0;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
       
       isNearBottomRef.current = isNearBottom;
@@ -217,11 +223,31 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
     () => ({
       onMessageReceived: handleMessageReceived,
       onError: handleError,
+      onMessageDeleted: (deletedId: number) => {
+        setMessages((prev) => prev.filter((m) => m.id !== deletedId));
+        setEditingMessageId((current) => (current === deletedId ? null : current));
+      },
+      onMessageEdited: (editedMessage: Messages) => {
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== editedMessage.id) return m;
+          return {
+            ...m,
+            message: editedMessage.message,
+            edited_at: editedMessage.edited_at,
+            message_type: editedMessage.message_type ?? m.message_type,
+            metadata: editedMessage.metadata ?? m.metadata,
+            envelopes: editedMessage.envelopes ?? m.envelopes,
+            hasFiles: editedMessage.hasFiles ?? m.hasFiles,
+          };
+        }));
+        setEditingMessageId((current) => (current === editedMessage.id ? null : current));
+        setEditedMessageText("");
+      },
     }),
     [handleMessageReceived, handleError],
   );
 
-  const { connectionState, sendMessage, sendMessageWithFiles } = useMessageService(userData, handlers, token!);
+  const { connectionState, sendMessage, sendMessageWithFiles, deleteMessage: deleteMessageWs, editMessage: editMessageWs } = useMessageService(userData, handlers, token!);
 
   // Мемоизируем connectionState для UserInfo
   const memoizedConnectionState = useMemo(() => connectionState, [connectionState.isConnected, connectionState.isRegistered]);
@@ -456,13 +482,49 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
 
   // Мемоизируем обработчики для Message компонента
   const messageHandlers = useMemo(() => ({
-    onDeleteMessage: () => {
-      /* no-op in UI; implement via API when ready */
+    onDeleteMessage: (messageId: number) => {
+      // Оптимистично удаляем на клиенте
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      setEditingMessageId((current) => (current === messageId ? null : current));
+      // Отправляем на сервер для синхронизации и рассылки
+      deleteMessageWs(messageId);
     },
-    onEditMessage: () => {
-      /* no-op in UI; implement via API when ready */
+    onEditMessage: (messageId: number) => {
+      const target = messages.find((m) => m.id === messageId);
+      setEditingMessageId(messageId);
+      setEditedMessageText(target?.message ?? "");
     },
-  }), []);
+  }), [messages]);
+
+  // Управление редактированием
+  const handleEditedTextChange = useCallback((value: string) => {
+    setEditedMessageText(value);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditedMessageText("");
+  }, []);
+
+  const handleSaveEdit = useCallback(async (messageId: number, newText: string) => {
+    // Оптимистичное обновление
+    setMessages((prev) => prev.map((m) => (
+      m.id === messageId ? { ...m, message: newText, edited_at: new Date().toISOString() } : m
+    )));
+    setEditingMessageId(null);
+    setEditedMessageText("");
+
+    try {
+      const companionPublicKey = await importPublicKeyFromSpki(user.companion_pubKey);
+      const recipients: Recipient[] = [
+        { userId: user.user_id, publicKey: publicKey! },
+        { userId: user.companion_id, publicKey: companionPublicKey },
+      ];
+      await editMessageWs(messageId, newText, recipients, "text");
+    } catch (e) {
+      console.error("Ошибка отправки редактирования:", e);
+    }
+  }, [publicKey, user.companion_pubKey, user.user_id, user.companion_id, editMessageWs]);
 
   // Очистка таймера при размонтировании
   useEffect(() => {
@@ -480,39 +542,48 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <Card
-        className={`rounded-3xl border-2 border-white/30 shadow-2xl flex-1 flex flex-col ${currentTheme.card} transition-all duration-500 backdrop-blur-2xl bg-white/30 dark:bg-gray-900/30 hover:shadow-[0_8px_40px_rgba(139,92,246,0.15)] hover:border-purple-400/40 ring-1 ring-white/20 ring-inset before:content-[''] before:absolute before:inset-0 before:rounded-3xl before:pointer-events-none before:shadow-[inset_0_0_40px_0_rgba(255,255,255,0.15)]`}>
-        <MemoizedUserInfo
-          user={userInfoData.user}
-          connectionState={memoizedConnectionState}
-          status={userInfoData.status}
-          userStatusTime={userInfoData.userStatusTime}
-        />
-        <hr
-          className={`h-1 border-0 ml-6 mr-6 rounded-2xl flex-shrink-0 ${currentTheme.hr}`}
-        />
-        <div className="flex-1 p-2 overflow-hidden">
+      <div className="rounded-3xl overflow-hidden flex-1 fix-antialias">
+        <Card
+        className={`rounded-none h-full flex flex-col ${currentTheme.card} transition-all duration-300 shadow-none`}
+        style={{ border: "none", boxShadow: "none", WebkitMaskImage: "none", maskImage: "none" }}>
+          <MemoizedUserInfo
+            user={userInfoData.user}
+            connectionState={memoizedConnectionState}
+            status={userInfoData.status}
+            userStatusTime={userInfoData.userStatusTime}
+          />
+          <hr
+            className={`h-1 border-0 ml-6 mr-6 rounded-2xl flex-shrink-0 ${currentTheme.hr}`}
+          />
+          <div className="flex-1 p-2 overflow-hidden">
           <Scrollbar
-            style={{ height: "100%" }}
-            noScrollX
-            onScroll={handleScroll}
-          >
-            <MemoizedMessage
-              messages={messages}
-              currentUserId={user.user_id}
-              uploadProgress={uploadProgress}
-              onImageLoad={handleImageLoad}
-              onDeleteMessage={messageHandlers.onDeleteMessage}
-              onEditMessage={messageHandlers.onEditMessage}
-            />
-            <div ref={messagesEndRef} />
-          </Scrollbar>
-        </div>
-        <MemoizedMessageComposer
-          onSendMessage={handleSendMessage}
-          onSendFilesAndMessage={handleSendFilesAndMessage}
-        />
-      </Card>
+            style={{ height: "100%", backgroundColor: "transparent" }}
+              noScrollX
+              onScroll={handleScroll}
+              ref={scrollbarRef as any}
+            >
+              <MemoizedMessage
+                messages={messages}
+                currentUserId={user.user_id}
+                uploadProgress={uploadProgress}
+                onImageLoad={handleImageLoad}
+                onDeleteMessage={messageHandlers.onDeleteMessage}
+                onEditMessage={messageHandlers.onEditMessage}
+                editingMessageId={editingMessageId}
+                editedText={editedMessageText}
+                onEditedTextChange={handleEditedTextChange}
+                onSaveEdit={handleSaveEdit}
+                onCancelEdit={handleCancelEdit}
+              />
+              <div ref={messagesEndRef} />
+            </Scrollbar>
+          </div>
+          <MemoizedMessageComposer
+            onSendMessage={handleSendMessage}
+            onSendFilesAndMessage={handleSendFilesAndMessage}
+          />
+        </Card>
+      </div>
       <MemoizedFileUploadProgress
         progress={uploadProgress}
         isUploading={isUploading}

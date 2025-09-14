@@ -40,6 +40,8 @@ interface MessageHandlers {
   onConnectionChange?: (isConnected: boolean) => void;
   onRegistrationChange?: (isRegistered: boolean) => void;
   onError?: (error: string) => void;
+  onMessageDeleted?: (messageId: number) => void;
+  onMessageEdited?: (message: Messages) => void;
 }
 
 // Интерфейс для прогресса загрузки
@@ -247,8 +249,80 @@ export class MessageService {
           }
           break;
 
-        case "message_sent":
-          // Для message_sent больше не обрабатываем, так как отправитель получает NEW_MESSAGE
+        // Удаление сообщения
+        case "message_deleted":
+          {
+            const deletedId = data.data?.message_id ?? data.data?.id ?? data.data;
+            if (typeof deletedId === 'number') {
+              this.handlers.onMessageDeleted?.(deletedId);
+            }
+          }
+          break;
+
+        // Редактирование сообщения
+        case "message_edited":
+          {
+            const messageData: MessageData = data.data;
+            const privateKey = this.userData.privateKey;
+            if (!privateKey) {
+              this.handlers.onError?.(
+                "Приватный ключ отсутствует, не могу расшифровать отредактированное сообщение.",
+              );
+              return;
+            }
+
+            let envelope: Envelope | undefined = undefined;
+            const envelopes = messageData.envelopes;
+            const userIdStr = this.userData.user_id.toString();
+            const userIdNum = this.userData.user_id;
+            if (Array.isArray(envelopes)) {
+              const envArr = envelopes as unknown as Record<string | number, Envelope>;
+              envelope = envArr[userIdNum] || envArr[userIdStr];
+            } else {
+              const envMap = envelopes as unknown as Record<string | number, Envelope>;
+              envelope = envMap[userIdStr] || envMap[userIdNum];
+            }
+            if (!envelope) {
+              this.handlers.onError?.(
+                `Конверт для пользователя ${this.userData.user_id} не найден при редактировании.`,
+              );
+              return;
+            }
+
+            try {
+              const messageKey = await unwrapSymmetricKey(
+                envelope.key,
+                envelope.ephemPubKey,
+                envelope.iv,
+                privateKey,
+              );
+              let decryptedText = "";
+              if (messageData.ciphertext && messageData.nonce) {
+                decryptedText = await decryptMessage(
+                  messageData.ciphertext,
+                  messageData.nonce,
+                  messageKey,
+                );
+              }
+              const decryptedMessage: Messages = {
+                id: messageData.id,
+                chat_id: messageData.chat_id,
+                message: decryptedText,
+                created_at: messageData.created_at || new Date().toISOString(),
+                sender_id: messageData.sender_id,
+                message_type: messageData.message_type,
+                edited_at: messageData.edited_at,
+                is_read: messageData.is_read,
+                metadata: messageData.metadata || [],
+                hasFiles: messageData.message_type === "file" || messageData.message_type === "message_with_files",
+                envelopes: messageData.envelopes,
+              };
+              this.handlers.onMessageEdited?.(decryptedMessage);
+            } catch (e) {
+              console.error("Ошибка расшифровки отредактированного сообщения:", e);
+              this.handlers.onError?.("Не удалось расшифровать отредактированное сообщение.");
+            }
+          }
           break;
 
         case "error":
@@ -538,6 +612,77 @@ export class MessageService {
     }
   }
 
+  public async deleteMessage(messageId: number): Promise<boolean> {
+    if (!this.ws || !this.isConnected || !this.isRegistered) {
+      this.handlers.onError?.("Нет соединения для удаления сообщения");
+      return false;
+    }
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: "delete_message",
+          data: { chat_id: this.userData.chat_id, message_id: messageId },
+        }),
+      );
+      return true;
+    } catch (e) {
+      console.error("Ошибка отправки запроса на удаление:", e);
+      this.handlers.onError?.("Не удалось отправить запрос на удаление сообщения");
+      return false;
+    }
+  }
+
+  public async editMessage(
+    messageId: number,
+    newText: string,
+    recipients: Recipient[],
+    messageType?: string,
+  ): Promise<boolean> {
+    if (!this.ws || !this.isConnected || !this.isRegistered) {
+      this.handlers.onError?.("Нет соединения для редактирования сообщения");
+      return false;
+    }
+    try {
+      const messageKey = await generateMessageEncryptionKey();
+      const { ciphertext, nonce } = await encryptMessage(newText, messageKey);
+      const envelopes: { [userId: number]: { key: string; ephemPubKey: string; iv: string } } = {};
+      for (const recipient of recipients) {
+        const { wrappedKey, ephemeralPublicKey, iv } = await wrapSymmetricKey(
+          messageKey,
+          recipient.publicKey,
+        );
+        envelopes[recipient.userId] = {
+          key: wrappedKey,
+          ephemPubKey: ephemeralPublicKey,
+          iv,
+        };
+      }
+
+      const payload: Partial<MessageData> & { id: number; chat_id: number } = {
+        id: messageId,
+        chat_id: this.userData.chat_id,
+        ciphertext,
+        nonce,
+        envelopes,
+      };
+      if (messageType) {
+        (payload as Partial<MessageData>).message_type = messageType as MessageData["message_type"];
+      }
+
+      this.ws.send(
+        JSON.stringify({
+          type: "edit_message",
+          data: payload,
+        }),
+      );
+      return true;
+    } catch (e) {
+      console.error("Ошибка при подготовке/отправке редактирования:", e);
+      this.handlers.onError?.("Не удалось отправить редактирование сообщения");
+      return false;
+    }
+  }
+
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(
@@ -666,5 +811,13 @@ export const useMessageService = (
         onProgress,
         pendingId,
       ),
+    deleteMessage: (messageId: number) =>
+      messageServiceRef.current!.deleteMessage(messageId),
+    editMessage: (
+      messageId: number,
+      newText: string,
+      recipients: Recipient[],
+      messageType?: string,
+    ) => messageServiceRef.current!.editMessage(messageId, newText, recipients, messageType),
   };
 };
