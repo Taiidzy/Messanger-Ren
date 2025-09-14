@@ -1,0 +1,31 @@
+{
+  "name": "online-service",
+  "version": "1.0.0",
+  "description": "Сервис для управленя статусами пользователей",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "nodemon -r module-alias/register src/app.js",
+    "start": "node -r module-alias/register src/app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "1.12.2",
+    "dotenv": "^17.2.2",
+    "module-alias": "^2.2.3",
+    "redis": "^5.8.2",
+    "winston": "^3.17.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "_moduleAliases": {
+    "@config": "src/config.js",
+    "@utils": "src/utils",
+    "@api": "src/api",
+    "@domain": "src/domain",
+    "@infrastructure": "src/infrastructure"
+  }
+}

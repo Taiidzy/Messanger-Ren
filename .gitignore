@@ -161,3 +161,7 @@ grafana/
 
 mobile/.gitignore
 messanger-ren.ru
+
+generate_secret_key.py
+compose.certbot.yml
+frontend/.env.production\

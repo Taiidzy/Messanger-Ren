@@ -1,7 +1,7 @@
 FROM node:20-alpine as base
 
 RUN apk add --no-cache g++ make py3-pip libc6-compat
-WORKDIR /backend/realtime-service
+WORKDIR /app
 COPY . .
 
 FROM base as builder

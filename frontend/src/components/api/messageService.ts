@@ -14,7 +14,7 @@ import {
   wrapSymmetricKey,
   unwrapSymmetricKey,
 } from "@/components/utils/crypto";
-import { WS_URL } from "@/components/utils/const";
+import { MESSAGE_SERVICE_URL } from "@/components/utils/const";
 import { uploadVideoByChunks } from "@/components/api/fileUploader";
 
 interface UserData {
@@ -107,7 +107,7 @@ export class MessageService {
     }
 
     try {
-      this.ws = new WebSocket(WS_URL);
+      this.ws = new WebSocket(MESSAGE_SERVICE_URL);
       this.setupEventHandlers();
     } catch (error) {
       console.error("Ошибка создания WebSocket соединения:", error);

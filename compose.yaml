@@ -64,11 +64,30 @@ services:
     container_name: message-service
     restart: always
     environment:
-      PORT: ${PORT}
-      CORE_API_URL: ${CORE_API_URL}
-      REDIS_URL: ${REDIS_URL}
+      APP_PORT: ${MESSAGE_SERVICE_PORT}
+      AUTH_HOST: ${AUTH_HOST}
+      REDIS_HOST: ${REDIS_URL}
     expose:
       - 3000
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - backend
+
+# ======================= Online Service =======================
+
+  online-service:
+    build:
+      context: ./services/online-service # Указывает на текущую директорию, где лежит Dockerfile
+    container_name: online-service
+    restart: always
+    environment:
+      PORT: ${ONLINE_SERVICE_PORT}
+      AUTH_HOST: ${AUTH_HOST}
+      REDIS_HOST: ${REDIS_URL}
+    expose:
+      - 3101
     networks:
       - app-network
     depends_on:

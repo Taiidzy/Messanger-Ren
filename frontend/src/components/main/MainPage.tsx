@@ -19,7 +19,7 @@ import { useNavigate } from "react-router";
 import { useToast } from "@/components/ui/toast-context";
 import { OnlineStatusClient } from "@/components/api/statusClient";
 import type { ContactStatus } from "@/components/api/statusClient";
-import { WS_URL } from "@/components/utils/const";
+import { ONLINE_SERVICE_URL } from "@/components/utils/const";
 
 const MainPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -99,7 +99,7 @@ const MainPage: React.FC = () => {
           console.error('❌ Ошибка:', error);
       });
 
-      statusClient.connect(WS_URL).catch(error => {
+      statusClient.connect(ONLINE_SERVICE_URL).catch(error => {
         console.error('Не удалось подключиться:', error);
       });
 
