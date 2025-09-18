@@ -21,6 +21,7 @@ online-service/
 │  ├─ app.js                    # Основной файл для запуска сервера
 │  └─ config.js                 # Конфигурации
 ├─ .env
+├─ .Dockerfile
 ├─ package.json
 └─ README.md                    # Этот файл
 
@@ -36,11 +37,11 @@ online-service/
 
 ## Переменные окружения
 
-| Переменная | Описание | По умолчанию |
-|------------|----------|--------------|
-| `APP_PORT` | Порт WebSocket сервера | `3101` |
-| `AUTH_HOST` | URL основного API | `http://localhost:8000` |
-| `REDIS_HOST` | URL Redis сервера | `redis://localhost:6379` |
+| Переменная   | Описание               | По умолчанию             |
+|--------------|------------------------|--------------------------|
+| `APP_PORT`   | Порт WebSocket сервера | `3101`                   |
+| `AUTH_HOST`  | URL основного API      | `http://localhost:8000`  |
+| `REDIS_HOST` | URL Redis сервера      | `redis://localhost:6379` |
 
 ## Протокол WebSocket
 

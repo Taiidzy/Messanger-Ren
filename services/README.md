@@ -26,10 +26,10 @@ services/
 
 | Сервис                                           | Язык       | Статус           |
 |--------------------------------------------------|------------|------------------|
-| [auth-service](./chat-service/README.md)         |    ----    | 🟡 В разработке |
-| [chat-service](./chat-service/README.md)         |    ----    | 🔴 Не начат     |
+| [auth-service](./chat-service/README.md)         |   Python   | ✅ В разработке |
+| [chat-service](./chat-service/README.md)         |     TS     | 🟡 В разработке |
 | [media-service](./media-service/README.md)       |    ----    | 🔴 Не начат     |
-| [message-service](./message-service/README.md)   |     Go     | ✅ Готов        |
+| [message-service](./message-service/README.md)   |     Go     | 🟡 В разработке |
 | [online-service](./online-service/README.md)     |     JS     | ✅ Готов        |
 | [profiles-service](./profiles-service/README.md) |    ----    | 🔴 Не начат     |
 | [storage-service](./storage-service/README.md)   |    ----    | 🔴 Не начат     |
