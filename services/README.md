@@ -26,7 +26,7 @@ services/
 
 | Сервис                                           | Язык       | Статус           |
 |--------------------------------------------------|------------|------------------|
-| [auth-service](./chat-service/README.md)         |   Python   | ✅ В разработке |
+| [auth-service](./auth-service/README.md)         |   Python   | 🟡 В разработке |
 | [chat-service](./chat-service/README.md)         |     TS     | 🟡 В разработке |
 | [media-service](./media-service/README.md)       |    ----    | 🔴 Не начат     |
 | [message-service](./message-service/README.md)   |     Go     | 🟡 В разработке |
