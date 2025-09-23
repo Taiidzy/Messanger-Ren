@@ -132,7 +132,11 @@ export class ChatsService {
     }
   }
 
-  async getMessagesChat(chatId: number, currentUser: AuthUser): Promise<Message[]> {
+  async getMessagesChat(
+    chatId: number,
+    currentUser: AuthUser,
+    options?: { limit?: number; offset?: number },
+  ): Promise<Message[]> {
     try {
       const chat = await this.chatsRepository.findChatById(chatId);
       
@@ -145,7 +149,11 @@ export class ChatsService {
         throw new ChatNotFoundException();
       }
 
-      const messages = await this.chatsRepository.getAllMessage(chatId);
+      // Нормализуем параметры пагинации
+      const limit = Math.min(Math.max(options?.limit ?? 50, 1), 50);
+      const offset = Math.max(options?.offset ?? 0, 0);
+
+      const messages = await this.chatsRepository.getMessages(chatId, limit, offset);
       return messages;
     } catch (error) {
       this.logger.error(`Ошибка получения сообщений чата ${chatId}: ${error.message}`, error.stack);

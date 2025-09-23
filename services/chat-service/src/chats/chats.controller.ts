@@ -8,6 +8,8 @@ import {
     ParseIntPipe,
     UseGuards,
     Request,
+    Query,
+    DefaultValuePipe,
   } from '@nestjs/common';
   import { ChatsService } from './chats.service';
   import { CreateChatDto } from './dto/create-chat.dto';
@@ -36,8 +38,10 @@ import {
     async getChatMessages(
       @Param('id', ParseIntPipe) chatId: number,
       @Request() req: { user: AuthUser },
+      @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+      @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
     ): Promise<Message[]> {
-      return this.chatsService.getMessagesChat(chatId, req.user);
+      return this.chatsService.getMessagesChat(chatId, req.user, { limit, offset });
     }
   
     @Get(':id')

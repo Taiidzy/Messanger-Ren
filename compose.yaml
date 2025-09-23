@@ -162,6 +162,9 @@ services:
     ports:
       - "8002:8002"
 
+    volumes:
+      - ./services/profiles-service/app/storage:/app/storage
+
     expose: 
       - 8002
     networks: 

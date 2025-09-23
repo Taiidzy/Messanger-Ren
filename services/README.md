@@ -26,12 +26,12 @@ services/
 
 | Сервис                                           | Язык       | Статус           |
 |--------------------------------------------------|------------|------------------|
-| [auth-service](./auth-service/README.md)         |   Python   | 🟡 В разработке |
-| [chat-service](./chat-service/README.md)         |     TS     | 🟡 В разработке |
-| [media-service](./media-service/README.md)       |    ----    | 🔴 Не начат     |
-| [message-service](./message-service/README.md)   |     Go     | 🟡 В разработке |
+| [auth-service](./auth-service/README.md)         |   Python   | ✅ Готов        |
+| [chat-service](./chat-service/README.md)         |     TS     | ✅ Готов        |
+| [media-service](./media-service/README.md)       |   Python   | ✅ Готов        |
+| [message-service](./message-service/README.md)   |     Go     | ✅ Готов        |
 | [online-service](./online-service/README.md)     |     JS     | ✅ Готов        |
-| [profiles-service](./profiles-service/README.md) |    ----    | 🔴 Не начат     |
+| [profiles-service](./profiles-service/README.md) |   Python   | ✅ Готов        |
 | [storage-service](./storage-service/README.md)   |    ----    | 🔴 Не начат     |
 
 ### Легенда статусов:

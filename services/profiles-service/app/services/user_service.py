@@ -7,6 +7,8 @@ def save_avatar(avatar: UploadFile, login: str) -> str:
     
     file_name = login + "." + avatar.filename.split(".")[-1]
     file_path = f"storage/avatars/{file_name}"
+    # Ensure target directory exists (works with mounted volume at /app/storage)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
     
     # Удаляем предыдущий аватар, если он существует
     if os.path.exists(file_path):

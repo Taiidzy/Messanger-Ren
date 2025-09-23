@@ -97,6 +97,30 @@ export class ChatsRepository {
     }));
   }
 
+  // Получение сообщений из чата с пагинацией
+  async getMessages(chatId: number, limit: number, offset: number): Promise<Message[]> {
+    const result = await this.prisma.$queryRawUnsafe(
+      `
+      SELECT id, ${chatId} as chat_id, sender_id, ciphertext, nonce, envelopes, message_type, metadata, created_at, edited_at, is_read
+      FROM chat_${chatId}
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+      `,
+      limit,
+      offset,
+    );
+
+    if (!Array.isArray(result)) {
+      return [];
+    }
+
+    return result.map((message) => ({
+      ...message,
+      ciphertext: this.bufferToBase64(message.ciphertext),
+      nonce: this.bufferToBase64(message.nonce),
+    }));
+  }
+
   // Создание таблиц для сообщений через raw SQL
   async createChatTables(chatId: number): Promise<void> {
     // Создание таблицы сообщений
