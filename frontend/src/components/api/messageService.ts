@@ -16,6 +16,7 @@ import {
 } from "@/components/utils/crypto";
 import { MESSAGE_SERVICE_URL } from "@/components/utils/const";
 import { uploadVideoByChunks } from "@/components/api/fileUploader";
+import { FileService } from "@/components/api/fileService";
 
 interface UserData {
   user_id: number;
@@ -493,7 +494,7 @@ export class MessageService {
         // Улучшенная логика определения типа файла
         const isVideo = file.type.startsWith("video/") || 
                        file.name.toLowerCase().match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v|3gp|ogv)$/);
-        const isLarge = file.size > 20 * 1024 * 1024;
+        const isLarge = file.size > 2 * 1024 * 1024;
         
         if (isVideo || isLarge) {
           usedChunkedUpload = true;
@@ -612,7 +613,7 @@ export class MessageService {
     }
   }
 
-  public async deleteMessage(messageId: number): Promise<boolean> {
+  public async deleteMessage(messageId: number, metadata: Metadata[] | undefined): Promise<boolean> {
     if (!this.ws || !this.isConnected || !this.isRegistered) {
       this.handlers.onError?.("Нет соединения для удаления сообщения");
       return false;
@@ -624,6 +625,12 @@ export class MessageService {
           data: { chat_id: this.userData.chat_id, message_id: messageId },
         }),
       );
+
+      const meta0 = metadata?.[0];
+      if (meta0 && ((meta0.chunk_count ?? 0) > 0)) {
+        console.log("[DELETE_MESSAGE] Удаляем файлы чанками");
+        await FileService.deleteFile(this.userData.chat_id, meta0.file_id);
+      }
       return true;
     } catch (e) {
       console.error("Ошибка отправки запроса на удаление:", e);
@@ -811,8 +818,8 @@ export const useMessageService = (
         onProgress,
         pendingId,
       ),
-    deleteMessage: (messageId: number) =>
-      messageServiceRef.current!.deleteMessage(messageId),
+    deleteMessage: (messageId: number, metadata: Metadata[] | undefined) =>
+      messageServiceRef.current!.deleteMessage(messageId, metadata),
     editMessage: (
       messageId: number,
       newText: string,

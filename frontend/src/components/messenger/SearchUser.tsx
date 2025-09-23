@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { API_URL } from "@/components/utils/const";
+import { PROFILES_SERVICE_URL } from "@/components/utils/const";
 import { createChat } from "@/components/api/Chats";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/toast-context";
@@ -287,7 +287,7 @@ const SearchUser: React.FC<SearchUserProps> = ({ onChatCreated }) => {
                         {/* Аватар пользователя с индикаторами статуса */}
                         <Avatar className="w-12 h-12">
                           <AvatarImage
-                            src={`${API_URL}/storage/avatars/${user.avatar}?${new Date().getTime()}`}
+                            src={`${PROFILES_SERVICE_URL}/storage/avatars/${user.avatar}?${new Date().getTime()}`}
                             alt={user.userName || "User"}
                             className="object-cover w-full h-full"
                           />

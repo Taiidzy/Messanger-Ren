@@ -58,7 +58,7 @@ const RecoveryForm: React.FC = () => {
         login: username,
       });
 
-      if (result.status !== 200 || !result.encryptedPrivateKeyByAccessKey) {
+      if (!result.encryptedPrivateKeyByAccessKey) {
         showToast({
           variant: "destructive",
           title: "Ошибка",
@@ -76,7 +76,7 @@ const RecoveryForm: React.FC = () => {
 
         // Дешифруем приватный ключ
         const privateKey = await decryptData(
-          result.encryptedPrivateKeyByAccessKey,
+          result.encryptedPrivateKeyByAccessKey!,
           accessKeyDerivedKey,
         );
 

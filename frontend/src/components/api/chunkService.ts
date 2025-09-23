@@ -1,6 +1,6 @@
 // Предположим, что эти типы и функции импортированы из других модулей
 import { decryptFile } from '@/components/utils/crypto';
-import { API_URL } from '@/components/utils/const';
+import { MEDIA_SERVICE_URL } from '@/components/utils/const';
 import { logoutUser } from "@/components/auth/Logout";
 
 // Тип для метаданных видео
@@ -44,7 +44,7 @@ export const fetchAndDecryptFile = async ({
 
   // 1. Загрузка метаданных
   const metaRes = await fetch(
-    `${API_URL}/chat/file_metadata/${chatId}/${messageId}/${fileId}`,
+    `${MEDIA_SERVICE_URL}/file_metadata/${chatId}/${messageId}/${fileId}`,
     { 
       headers: { Authorization: `Bearer ${token}` },
       signal, // Передаем сигнал для возможности отмены
@@ -63,7 +63,7 @@ export const fetchAndDecryptFile = async ({
     if (signal.aborted) return null;
 
     const chunkRes = await fetch(
-      `${API_URL}/chat/file_chunk/${chatId}/${messageId}/${fileId}/${i}`,
+      `${MEDIA_SERVICE_URL}/file_chunk/${chatId}/${messageId}/${fileId}/${i}`,
       { 
         headers: { Authorization: `Bearer ${token}` },
         signal,

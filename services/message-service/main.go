@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -36,7 +37,7 @@ func main() {
 
 	log.Println("Получен сигнал завершения, останавливаем сервер...")
 	
-	ctx, cancel := context.WithTimeout(context.Background(), 30)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	
 	if err := server.Stop(ctx); err != nil {

@@ -1,0 +1,581 @@
+{
+  "messanger_ren_api_documentation": {
+    "version": "1.0.0",
+    "description": "Полная документация API и WebSocket маршрутов для Messanger Ren",
+    "services": {
+      "auth-service": {
+        "url": "https://api.messanger-ren.ru/auth-service",
+        "type": "REST API",
+        "technology": "Python FastAPI",
+        "description": "Сервис аутентификации и регистрации пользователей",
+        "routes": {
+          "/auth/login": {
+            "method": "POST",
+            "description": "Авторизация пользователя",
+            "request_body": {
+              "login": "string",
+              "password": "string"
+            },
+            "response": {
+              "access_token": "string",
+              "token_type": "string",
+              "encryptedPrivateKeyByUser": "string",
+              "salt": "string",
+              "publicKey": "string",
+              "user_id": "integer"
+            }
+          },
+          "/auth/verify": {
+            "method": "GET",
+            "description": "Проверка токена аутентификации",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "response": {
+              "user_id": "integer"
+            }
+          },
+          "/register/step1": {
+            "method": "POST",
+            "description": "Первый шаг регистрации пользователя",
+            "request_body": {
+              "login": "string",
+              "userName": "string (optional)",
+              "password": "string",
+              "publicKey": "string",
+              "encryptedPrivateKeyByUser": "string",
+              "salt": "string"
+            },
+            "response": {
+              "accessKey": "string",
+              "user_id": "integer",
+              "login": "string"
+            }
+          },
+          "/register/step2": {
+            "method": "POST",
+            "description": "Второй шаг регистрации пользователя",
+            "request_body": {
+              "login": "string",
+              "encryptedPrivateKeyByAccessKey": "string"
+            },
+            "response": {
+              "message": "string"
+            }
+          },
+          "/recovery/recover_account_by_access_key": {
+            "method": "POST",
+            "description": "Восстановление аккаунта по ключу доступа",
+            "request_body": {
+              "login": "string"
+            },
+            "response": {
+              "encryptedPrivateKeyByAccessKey": "string"
+            }
+          },
+          "/recovery/update_password_and_keys": {
+            "method": "POST",
+            "description": "Обновление пароля и ключей",
+            "request_body": {
+              "login": "string",
+              "oldPassword": "string",
+              "newPassword": "string",
+              "newEncryptedPrivateKeyByUser": "string",
+              "newSalt": "string"
+            },
+            "response": {
+              "message": "string"
+            }
+          }
+        }
+      },
+      "profiles-service": {
+        "url": "https://api.messanger-ren.ru/profiles-service",
+        "type": "REST API",
+        "technology": "Python FastAPI",
+        "description": "Сервис управления профилями пользователей",
+        "routes": {
+          "/profiles": {
+            "method": "GET",
+            "description": "Получить информацию о текущем пользователе",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "response": {
+              "id": "integer",
+              "login": "string",
+              "userName": "string",
+              "avatar": "string",
+              "createdAt": "date"
+            }
+          },
+          "/profiles/search": {
+            "method": "GET",
+            "description": "Поиск пользователей по имени",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "query_params": {
+              "username": "string"
+            },
+            "response": "array of User objects"
+          },
+          "/profiles/avatar/{username}": {
+            "method": "GET",
+            "description": "Получить аватар пользователя по avatar, пример: Taiidzy.jpg",
+            "path_params": {
+              "username": "string"
+            },
+            "response": "File (image)"
+          },
+          "/user/update/avatar": {
+            "method": "POST",
+            "description": "Обновить аватар пользователя",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "request_body": {
+              "avatar": "File (multipart/form-data)"
+            },
+            "response": "User object"
+          },
+          "/user/update/name": {
+            "method": "POST",
+            "description": "Обновить имя пользователя",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "request_body": {
+              "userName": "string"
+            },
+            "response": "User object"
+          }
+        }
+      },
+      "media-service": {
+        "url": "https://api.messanger-ren.ru/media-service",
+        "type": "REST API",
+        "technology": "Python FastAPI",
+        "description": "Сервис для работы с медиафайлами (загрузка, хранение, получение)",
+        "routes": {
+          "/upload_chunk/{chat_id}/{message_id}/{file_id}/{chunk_index}": {
+            "method": "POST",
+            "description": "Загрузка чанка файла",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "chat_id": "integer",
+              "message_id": "integer", 
+              "file_id": "integer",
+              "chunk_index": "integer"
+            },
+            "request_body": {
+              "chunk": "string (base64)",
+              "nonce": "string"
+            },
+            "response": {
+              "status": "string"
+            }
+          },
+          "/upload_metadata/{chat_id}/{message_id}/{file_id}": {
+            "method": "POST",
+            "description": "Загрузка метаданных файла",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "chat_id": "integer",
+              "message_id": "integer",
+              "file_id": "integer"
+            },
+            "request_body": {
+              "filename": "string",
+              "mimetype": "string",
+              "size": "integer",
+              "chunk_count": "integer",
+              "chunk_size": "integer",
+              "nonces": "array",
+              "duration": "number (optional)"
+            },
+            "response": {
+              "status": "string"
+            }
+          },
+          "/file_metadata/{chat_id}/{message_id}/{file_id}": {
+            "method": "GET",
+            "description": "Получение метаданных файла",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "chat_id": "integer",
+              "message_id": "integer",
+              "file_id": "integer"
+            },
+            "response": "metadata object"
+          },
+          "/file_chunk/{chat_id}/{message_id}/{file_id}/{chunk_index}": {
+            "method": "GET",
+            "description": "Получение чанка файла",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "chat_id": "integer",
+              "message_id": "integer",
+              "file_id": "integer",
+              "chunk_index": "integer"
+            },
+            "response": {
+              "chunk": "string (base64)",
+              "nonce": "string",
+              "index": "integer"
+            }
+          },
+          "/file/{file_path}": {
+            "method": "GET",
+            "description": "Получение содержимого файла по пути",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "file_path": "string"
+            },
+            "response": {
+              "encrypted_data": "string (base64)",
+              "file_path": "string"
+            }
+          },
+          "/messages/{chat_id}/{message_id}/files": {
+            "method": "GET",
+            "description": "Получение всех файлов сообщения",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "chat_id": "integer",
+              "message_id": "integer"
+            },
+            "response": "array of file objects"
+          },
+          "/message/{chat_id}/{file_id}": {
+            "method": "DELETE",
+            "description": "Удаление файла сообщения",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "chat_id": "integer",
+              "file_id": "integer"
+            },
+            "response": {
+              "message": "string"
+            }
+          }
+        }
+      },
+      "chat-service": {
+        "url": "https://api.messanger-ren.ru/chat-service",
+        "type": "REST API",
+        "technology": "NestJS TypeScript",
+        "description": "Сервис управления чатами",
+        "routes": {
+          "/chats": {
+            "method": "POST",
+            "description": "Создание нового чата",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "request_body": {
+              "companion_id": "integer"
+            },
+            "response": {
+              "chatId": "integer",
+              "user1Id": "integer",
+              "user2Id": "integer",
+              "createdAt": "Date"
+            }
+          },
+          "/chats": {
+            "method": "GET",
+            "description": "Получение списка чатов пользователя",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "response": "array of ChatWithUserInfo objects"
+          },
+          "/chats/{id}": {
+            "method": "GET",
+            "description": "Получение информации о чате",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "id": "integer"
+            },
+            "response": "ChatResponse object"
+          },
+          "/chats/{id}/messages": {
+            "method": "GET",
+            "description": "Получение сообщений чата",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "id": "integer"
+            },
+            "response": "array of Message objects"
+          },
+          "/chats/{id}": {
+            "method": "DELETE",
+            "description": "Удаление чата",
+            "headers": {
+              "Authorization": "Bearer <token>"
+            },
+            "path_params": {
+              "id": "integer"
+            },
+            "response": {
+              "message": "string"
+            }
+          }
+        }
+      },
+      "message-service": {
+        "url": "wss://ws.messanger-ren.ru/message-service",
+        "type": "WebSocket",
+        "technology": "Go",
+        "description": "WebSocket сервис для обмена сообщениями в реальном времени",
+        "connection_path": "/message-service",
+        "message_types": {
+          "register": {
+            "direction": "client_to_server",
+            "description": "Регистрация пользователя в чате",
+            "data": {
+              "type": "register",
+              "token": "string",
+              "chat_id": "integer"
+            }
+          },
+          "registered": {
+            "direction": "server_to_client",
+            "description": "Подтверждение регистрации",
+            "data": {
+              "type": "registered",
+              "message": "string"
+            }
+          },
+          "message": {
+            "direction": "client_to_server",
+            "description": "Отправка нового сообщения",
+            "data": {
+              "type": "message",
+              "data": {
+                "chat_id": "integer",
+                "sender_id": "integer",
+                "ciphertext": "string (base64)",
+                "nonce": "string (base64)",
+                "envelopes": "object",
+                "message_type": "string",
+                "metadata": "object"
+              }
+            }
+          },
+          "new_message": {
+            "direction": "server_to_client",
+            "description": "Получение нового сообщения",
+            "data": {
+              "type": "new_message",
+              "data": "MessageData object"
+            }
+          },
+          "edit_message": {
+            "direction": "client_to_server",
+            "description": "Редактирование сообщения",
+            "data": {
+              "type": "edit_message",
+              "data": {
+                "id": "integer",
+                "chat_id": "integer",
+                "ciphertext": "string (optional)",
+                "nonce": "string (optional)",
+                "message_type": "string (optional)",
+                "metadata": "object (optional)",
+                "envelopes": "object (optional)"
+              }
+            }
+          },
+          "message_edited": {
+            "direction": "server_to_client",
+            "description": "Уведомление о редактировании сообщения",
+            "data": {
+              "type": "message_edited",
+              "data": "EditedMessage object"
+            }
+          },
+          "delete_message": {
+            "direction": "client_to_server",
+            "description": "Удаление сообщения",
+            "data": {
+              "type": "delete_message",
+              "data": {
+                "chat_id": "integer",
+                "message_id": "integer"
+              }
+            }
+          },
+          "message_deleted": {
+            "direction": "server_to_client",
+            "description": "Уведомление об удалении сообщения",
+            "data": {
+              "type": "message_deleted",
+              "data": {
+                "message_id": "integer"
+              }
+            }
+          },
+          "error": {
+            "direction": "server_to_client",
+            "description": "Сообщение об ошибке",
+            "data": {
+              "type": "error",
+              "message": "string"
+            }
+          }
+        }
+      },
+      "online-service": {
+        "url": "wss://ws.messanger-ren.ru/online-service",
+        "type": "WebSocket",
+        "technology": "Node.js",
+        "description": "WebSocket сервис для отслеживания онлайн статуса пользователей",
+        "connection_path": "/online-service",
+        "message_types": {
+          "status_register": {
+            "direction": "client_to_server",
+            "description": "Регистрация для отслеживания статуса",
+            "data": {
+              "type": "status_register",
+              "data": {
+                "token": "string",
+                "contacts": "array of user_ids"
+              }
+            }
+          },
+          "status_registered": {
+            "direction": "server_to_client",
+            "description": "Подтверждение регистрации статуса",
+            "data": {
+              "type": "status_registered",
+              "data": {
+                "message": "string"
+              }
+            }
+          },
+          "status_update": {
+            "direction": "server_to_client",
+            "description": "Обновление статуса контакта",
+            "data": {
+              "type": "status_update",
+              "data": {
+                "user_id": "string",
+                "status": "online|offline",
+                "last_seen": "string (ISO date, for offline)"
+              }
+            }
+          },
+          "contact_status": {
+            "direction": "server_to_client",
+            "description": "Статус контакта при подключении",
+            "data": {
+              "type": "contact_status",
+              "data": {
+                "user_id": "string",
+                "status": "online|offline",
+                "last_seen": "string (ISO date, for offline)"
+              }
+            }
+          },
+          "error": {
+            "direction": "server_to_client",
+            "description": "Сообщение об ошибке",
+            "data": {
+              "type": "error",
+              "data": {
+                "message": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "authentication": {
+      "description": "Все сервисы используют Bearer токен аутентификации",
+      "header": "Authorization: Bearer <access_token>",
+      "token_verification": "Токены проверяются через auth-service/auth/verify"
+    },
+    "data_types": {
+      "User": {
+        "id": "integer",
+        "login": "string",
+        "userName": "string",
+        "avatar": "string",
+        "createdAt": "date"
+      },
+      "ChatResponse": {
+        "chatId": "integer",
+        "user1Id": "integer",
+        "user2Id": "integer",
+        "createdAt": "Date"
+      },
+      "ChatWithUserInfo": {
+        "chat_id": "integer",
+        "user_id": "integer",
+        "companion_id": "integer",
+        "created_at": "Date",
+        "companion_avatar": "string",
+        "companion_userName": "string",
+        "companion_pubKey": "string",
+        "last_message": "Message object"
+      },
+      "Message": {
+        "id": "integer",
+        "chat_id": "integer",
+        "sender_id": "integer",
+        "ciphertext": "string (base64)",
+        "nonce": "string (base64)",
+        "envelopes": "object",
+        "message_type": "string",
+        "metadata": "object",
+        "created_at": "string (ISO)",
+        "edited_at": "string (ISO, optional)",
+        "is_read": "boolean"
+      },
+      "MessageData": {
+        "id": "integer",
+        "chat_id": "integer",
+        "sender_id": "integer",
+        "message_type": "string",
+        "created_at": "string (ISO)",
+        "edited_at": "string (ISO, optional)",
+        "is_read": "boolean",
+        "ciphertext": "string (base64)",
+        "nonce": "string (base64)",
+        "metadata": "object",
+        "envelopes": "object"
+      },
+      "EditedMessage": {
+        "id": "integer",
+        "chat_id": "integer",
+        "sender_id": "integer",
+        "ciphertext": "string",
+        "nonce": "string",
+        "envelopes": "object",
+        "message_type": "string",
+        "metadata": "object",
+        "edited_at": "string (ISO)"
+      }
+    }
+  }
+}

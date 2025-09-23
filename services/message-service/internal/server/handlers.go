@@ -1,12 +1,9 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -167,35 +164,15 @@ func (s *ChatServer) processDeleteMessage(conn *websocket.Conn, msg IncomingMess
 		return
 	}
 
-	// Отправляем запрос на удаление в API
-	baseURL := s.getBaseURL()
-	url := fmt.Sprintf("%s/chat/%d/messages/%d", baseURL, deleteData.ChatID, deleteData.MessageID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		s.sendError(conn, "Ошибка при удалении сообщения")
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if clientInfo.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+clientInfo.Token)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
+	// Удаляем сообщение напрямую в БД (только автор может удалить своё сообщение)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.repo.DeleteMessage(ctx, deleteData.ChatID, deleteData.MessageID, clientInfo.UserID); err != nil {
 		log.Printf("Ошибка удаления сообщения: %v", err)
 		s.sendError(conn, "Ошибка при удалении сообщения")
 		return
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 200 {
-		s.broadcastDeleteToChat(deleteData.ChatID, deleteData.MessageID)
-	} else {
-		s.sendError(conn, fmt.Sprintf("Не удалось удалить сообщение: %d", resp.StatusCode))
-	}
+	s.broadcastDeleteToChat(deleteData.ChatID, deleteData.MessageID)
 }
 
 // processEditMessage обрабатывает редактирование сообщения
@@ -227,55 +204,31 @@ func (s *ChatServer) processEditMessage(conn *websocket.Conn, msg IncomingMessag
 		return
 	}
 
-	// Отправляем запрос на редактирование в API
-	baseURL := s.getBaseURL()
-	url := fmt.Sprintf("%s/chat/%d/messages/%d", baseURL, editData.ChatID, editData.ID)
-
-	payload, err := json.Marshal(editData)
-	if err != nil {
-		s.sendError(conn, "Ошибка при редактировании сообщения")
-		return
-	}
-
-	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(payload))
-	if err != nil {
-		s.sendError(conn, "Ошибка при редактировании сообщения")
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if clientInfo.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+clientInfo.Token)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	// Редактируем сообщение напрямую в БД (только автор может редактировать своё сообщение)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	editedAt, err := s.repo.EditMessage(ctx, editData.ChatID, editData.ID, clientInfo.UserID, editData)
 	if err != nil {
 		log.Printf("Ошибка редактирования сообщения: %v", err)
 		s.sendError(conn, "Ошибка при редактировании сообщения")
 		return
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == 200 {
-		editedMessage := EditedMessage{
-			ID:          editData.ID,
-			ChatID:      editData.ChatID,
-			SenderID:    clientInfo.UserID,
-			Ciphertext:  getString(editData.Ciphertext, ""),
-			Nonce:       getString(editData.Nonce, ""),
-			Envelopes:   editData.Envelopes,
-			MessageType: getString(editData.MessageType, "text"),
-			Metadata:    editData.Metadata,
-			EditedAt:    time.Now().Format(time.RFC3339),
-		}
-		if editedMessage.Envelopes == nil {
-			editedMessage.Envelopes = make(map[string]interface{})
-		}
-		s.broadcastEditToChat(editData.ChatID, editedMessage)
-	} else {
-		s.sendError(conn, fmt.Sprintf("Не удалось обновить сообщение: %d", resp.StatusCode))
+	editedMessage := EditedMessage{
+		ID:          editData.ID,
+		ChatID:      editData.ChatID,
+		SenderID:    clientInfo.UserID,
+		Ciphertext:  getString(editData.Ciphertext, ""),
+		Nonce:       getString(editData.Nonce, ""),
+		Envelopes:   editData.Envelopes,
+		MessageType: getString(editData.MessageType, "text"),
+		Metadata:    editData.Metadata,
+		EditedAt:    editedAt.Format(time.RFC3339),
 	}
+	if editedMessage.Envelopes == nil {
+		editedMessage.Envelopes = make(map[string]interface{})
+	}
+	s.broadcastEditToChat(editData.ChatID, editedMessage)
 }
 
 // getString возвращает значение строкового указателя или значение по умолчанию

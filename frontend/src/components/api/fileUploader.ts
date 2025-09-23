@@ -1,5 +1,5 @@
 import { encryptFile } from "@/components/utils/crypto";
-import { API_URL } from "@/components/utils/const";
+import { MEDIA_SERVICE_URL } from "@/components/utils/const";
 import { logoutUser } from "@/components/auth/Logout";
 
 // Тип для прогресса
@@ -68,13 +68,14 @@ export async function uploadVideoByChunks(
       try {
         const token = localStorage.getItem("token");
         const resp = await fetch(
-          `${API_URL}/chat/upload_chunk/${chatId}/${messageId}/${file_id}/${i}`,
+          `${MEDIA_SERVICE_URL}/upload_chunk/${chatId}/${messageId}/${file_id}/${i}`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
+            credentials: 'include', // Добавляем credentials для CORS
             body: JSON.stringify({
               chunk: encrypted.ciphertext,
               nonce: encrypted.nonce,
@@ -87,9 +88,13 @@ export async function uploadVideoByChunks(
           logoutUser();
         }
         else {
+          console.error(`Chunk upload failed: ${resp.status} ${resp.statusText}`);
+          const errorText = await resp.text().catch(() => 'Unknown error');
+          console.error(`Error details: ${errorText}`);
           await new Promise((res) => setTimeout(res, 500));
         }
-      } catch {
+      } catch (error) {
+        console.error(`Network error uploading chunk ${i}:`, error);
         await new Promise((res) => setTimeout(res, 500));
       }
     }
@@ -112,19 +117,26 @@ export async function uploadVideoByChunks(
   };
   const token = localStorage.getItem("token");
   try {
-    await fetch(
-      `${API_URL}/chat/upload_metadata/${chatId}/${messageId}/${file_id}`,
+    const metadataResp = await fetch(
+      `${MEDIA_SERVICE_URL}/upload_metadata/${chatId}/${messageId}/${file_id}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        credentials: 'include', // Добавляем credentials для CORS
         body: JSON.stringify(metadata),
       }
     );
-  } catch {
-    // ignore
+    
+    if (!metadataResp.ok) {
+      console.error(`Metadata upload failed: ${metadataResp.status} ${metadataResp.statusText}`);
+      const errorText = await metadataResp.text().catch(() => 'Unknown error');
+      console.error(`Metadata error details: ${errorText}`);
+    }
+  } catch (error) {
+    console.error('Metadata upload error:', error);
   }
   return {
     file_id,

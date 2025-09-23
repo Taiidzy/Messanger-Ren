@@ -9,7 +9,7 @@ import MessageComposer from "@/components/ui/message-composer";
 import FileUploadProgress from "@/components/ui/file-upload-progress";
 import ScrollToBottom from "@/components/ui/scroll-to-bottom";
 import type { UserChat } from "@/components/models/Chat";
-import type { Messages, Recipient } from "@/components/models/Messages";
+import type { Messages, Recipient, Metadata } from "@/components/models/Messages";
 import type { UploadProgress } from "@/components/api/messageService";
 import { getMessages } from "@/components/api/Chats";
 import { useMessageService } from "@/components/api/messageService";
@@ -482,12 +482,12 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
 
   // Мемоизируем обработчики для Message компонента
   const messageHandlers = useMemo(() => ({
-    onDeleteMessage: (messageId: number) => {
+    onDeleteMessage: (messageId: number, metadata: Metadata[] | undefined) => {
       // Оптимистично удаляем на клиенте
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
       setEditingMessageId((current) => (current === messageId ? null : current));
       // Отправляем на сервер для синхронизации и рассылки
-      deleteMessageWs(messageId);
+      deleteMessageWs(messageId, metadata);
     },
     onEditMessage: (messageId: number) => {
       const target = messages.find((m) => m.id === messageId);

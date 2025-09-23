@@ -1,11 +1,11 @@
-import { API_URL } from "@/components/utils/const";
+import { PROFILES_SERVICE_URL } from "@/components/utils/const";
 
 export const getUser = async (token: string) => {
   if (!token) {
     return null;
   }
 
-  const response = await fetch(`${API_URL}/user`, {
+  const response = await fetch(`${PROFILES_SERVICE_URL}/profiles`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -26,7 +26,7 @@ export const getUser = async (token: string) => {
 };
 
 export const updateUserName = async (token: string, userName: string) => {
-  const response = await fetch(`${API_URL}/user/update/name`, {
+  const response = await fetch(`${PROFILES_SERVICE_URL}/user/update/name`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -37,37 +37,8 @@ export const updateUserName = async (token: string, userName: string) => {
   return response.ok ? await response.json() : null;
 };
 
-export const searchUsers = async (token: string, loginQuery: string) => {
-  if (!token || !loginQuery) return [];
-  const response = await fetch(
-    `${API_URL}/user/search?login=${encodeURIComponent(loginQuery)}`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
-  if (!response.ok) return [];
-  return await response.json(); // [{id, userName, login}]
-};
-
-export const sendFile = async (token: string, file: File) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  const response = await fetch(`${API_URL}/user/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: formData,
-  });
-  return response.ok ? await response.json() : null;
-};
-
 export const searchUser = async (usernameQuery: string, token: string) => {
-  const response = await fetch(`${API_URL}/user/search?username=${usernameQuery}`, {
+  const response = await fetch(`${PROFILES_SERVICE_URL}/profiles/search?username=${usernameQuery}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",

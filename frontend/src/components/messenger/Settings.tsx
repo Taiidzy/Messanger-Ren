@@ -29,7 +29,7 @@ import AvatarUpload from "@/components/ui/avatar-upload";
 import { Separator } from "@/components/ui/separator";
 import { getInitials } from "@/components/utils/format";
 import { FileService } from "@/components/api/fileService";
-import { API_URL } from "@/components/utils/const";
+import { PROFILES_SERVICE_URL } from "@/components/utils/const";
 
 import {
   AlertDialog,
@@ -90,7 +90,7 @@ const Settings: React.FC = () => {
     formData.append("avatar", file);
 
     try {
-      const response = await fetch(`${API_URL}/user/update/avatar`, {
+      const response = await fetch(`${PROFILES_SERVICE_URL}/user/update/avatar`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -231,7 +231,7 @@ const Settings: React.FC = () => {
 
   const avatarUrl =
     userData.login && !avatarError
-      ? `${API_URL}/storage/avatars/${userData.avatar}?${new Date().getTime()}`
+      ? `${PROFILES_SERVICE_URL}/storage/avatars/${userData.avatar}?${new Date().getTime()}`
       : undefined;
 
   const handleEditName = () => setEditName(true);

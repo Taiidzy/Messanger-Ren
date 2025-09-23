@@ -1,18 +1,12 @@
 services:
 
-# ======================= BACKEND =======================
+# ======================= Auth Service =======================
 
-  backend:
+  auth-service:
     build:
-      context: ./backend/core-api
-    container_name: backend
-    labels:
-    - "logging=promtail"
+      context: ./services/auth-service
+    container_name: auth-service
     restart: always
-    volumes:
-      - ./backend/core-api/storage:/backend/core-api/storage/
-      - ./backend/core-api/storage/avatars/:/backend/core-api/storage/avatars
-      - ./backend/core-api/storage/chats:/backend/core-api/storage/chats
 
     environment:
 
@@ -26,11 +20,6 @@ services:
       ALGORITHM: ${ALGORITHM}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
 
-      # LOG_LEVEL: INFO
-      # API_HOST: 0.0.0.0
-      # API_PORT: 8000
-      # RELOAD: true
-      # UVICORN_LOG_LEVEL: info
 
     logging:
       driver: "json-file"
@@ -38,23 +27,34 @@ services:
         max-size: "10m"
         max-file: "3"
 
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
     ports:
-      - "8000:8000"
+      - "8001:8001"
 
     expose: 
-      - 8000
+      - 8001
     networks: 
       - app-network
     depends_on:
       - postgres
 
+# ======================= Chat Service =======================
+
+  chat-service:
+    build:
+      context: ./services/chat-service # Указывает на текущую директорию, где лежит Dockerfile
+    container_name: chat-service
+    restart: always
+    environment:
+      PORT: 3102
+      AUTH_SERVICE_URL: http://auth-service:8001/auth-service
+      DATABASE_URL: postgresql://Ren:Ren_Tokyo_Ghost@postgres:5432/Messanger-Ren?schema=public
+    expose:
+      - 3000
+    networks:
+      - app-network
+    depends_on:
+      - redis
+      - auth-service
 
 # ======================= Message Service =======================
 
@@ -67,13 +67,19 @@ services:
       APP_PORT: ${MESSAGE_SERVICE_PORT}
       AUTH_HOST: ${AUTH_HOST}
       REDIS_HOST: ${REDIS_URL}
+
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_SERVER}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
     expose:
       - 3000
     networks:
       - app-network
     depends_on:
       - redis
-      - backend
+      - auth-service
 
 # ======================= Online Service =======================
 
@@ -92,7 +98,76 @@ services:
       - app-network
     depends_on:
       - redis
-      - backend
+      - auth-service
+
+# ======================= Media Service =======================
+
+  media-service:
+    build:
+      context: ./services/media-service
+    container_name: media-service
+    restart: always
+    environment:
+      APP_PORT: 8003
+      AUTH_HOST: ${AUTH_HOST}
+      STORAGE_ROOT: /app/storage  # Путь внутри контейнера
+
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_SERVER}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    ports:
+      - "8003:8003"
+
+    volumes:
+      - ./services/media-service/app/storage:/app/storage  # Монтируем папку для постоянного хранения файлов
+
+    expose:
+      - 8003
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+      - auth-service
+
+# ======================= Profiles Service =======================
+
+  profiles-service:
+    build:
+      context: ./services/profiles-service
+    container_name: profiles-service
+    restart: always
+
+    environment:
+
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SERVER: ${POSTGRES_SERVER}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    ports:
+      - "8002:8002"
+
+    expose: 
+      - 8002
+    networks: 
+      - app-network
+    depends_on:
+      - postgres
 
 # ======================= DATABASE =======================
 
@@ -104,8 +179,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
     volumes:
-      - ./data:/var/lib/postgresql/data
+      - ./docker-services/postgres:/var/lib/postgresql/data
     expose:
       - 5432
     networks:
@@ -121,15 +198,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/certs:/etc/letsencrypt
+      - ./docker-services/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker-services/nginx/certs:/etc/letsencrypt
       - ./frontend/dist:/usr/share/nginx/html:ro
-      - ./nginx/logs:/var/log/nginx               # Логи пробрасываем
-      - ./nginx/blacklist.conf:/etc/nginx/blacklist.conf  # Файл с заблокированными IP
+      - ./docker-services/nginx/logs:/var/log/nginx               # Логи пробрасываем
+      - ./docker-services/nginx/blacklist.conf:/etc/nginx/blacklist.conf  # Файл с заблокированными IP
     networks:
       - app-network
     depends_on:
-      - backend
+      - auth-service
       - message-service
 
 # ======================= FAIL2BAN ==========================
@@ -139,8 +216,8 @@ services:
     container_name: fail2ban
     restart: always
     volumes:
-      - ./nginx/logs:/var/log/nginx
-      - ./fail2ban:/data
+      - ./docker-services/nginx/logs:/var/log/nginx
+      - ./docker-services/fail2ban:/data
     environment:
       - TZ=Europe/Moscow
     networks:
@@ -151,8 +228,10 @@ services:
   prometheus:
     image: prom/prometheus
     container_name: prometheus
+    profiles:
+    - "prod"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./docker-services/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
     ports:
@@ -160,15 +239,17 @@ services:
     networks:
       - app-network
     depends_on:
-      - backend  # Добавляем зависимость
+      - auth-service
 
 # ======================= Grafana ==========================
 
   grafana:
     image: grafana/grafana
     container_name: grafana
+    profiles:
+    - "prod"
     volumes:
-      - ./grafana:/var/lib/grafana
+      - ./docker-services/grafana:/var/lib/grafana
     ports:
       - "3001:3000"
     environment:
@@ -188,8 +269,8 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./redis/redis-data:/data
-      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./docker-services/redis/redis-data:/data
+      - ./docker-services/redis/redis.conf:/usr/local/etc/redis/redis.conf
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     networks:
       - app-network
@@ -199,13 +280,15 @@ services:
   loki:
     image: grafana/loki:2.9.3
     container_name: loki
+    profiles:
+    - "prod"
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
-      - ./loki/loki-config.yml:/etc/loki/local-config.yaml
-      - ./loki/data:/loki
-      - ./loki/data/wal:/loki/wal
+      - ./docker-services/loki/loki-config.yml:/etc/loki/local-config.yaml
+      - ./docker-services/loki/data:/loki
+      - ./docker-services/loki/data/wal:/loki/wal
     networks:
       - app-network
 
@@ -215,10 +298,12 @@ services:
   promtail:
     image: grafana/promtail:2.9.3
     container_name: promtail
+    profiles:
+    - "prod"
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./promtail/promtail-config.yml:/etc/promtail/config.yml
+      - ./docker-services/promtail/promtail-config.yml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     networks:
       - app-network

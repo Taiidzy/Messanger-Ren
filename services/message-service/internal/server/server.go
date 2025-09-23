@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,9 +25,9 @@ var upgrader = websocket.Upgrader{
 // ChatServer основная структура сервера
 type ChatServer struct {
 	port          int
-	dbServerURL   string
 	authServerURL string
 	redisClient   *RedisClient
+	repo          *Repository
 	clients       map[*websocket.Conn]*ClientInfo
 	mu            sync.RWMutex
 	server        *http.Server
@@ -43,19 +42,24 @@ func NewChatServer() *ChatServer {
 	}
 
 	coreAPIURL := getEnv("AUTH_HOST", "http://localhost:8000")
-	dbServerURL := coreAPIURL + "/chat/massage"
-	authServerURL := coreAPIURL + "/auth/verify"
+	authServerURL := coreAPIURL + "/auth-service/auth/verify"
 
 	redisClient, err := NewRedisClient()
 	if err != nil {
 		log.Fatalf("Ошибка инициализации Redis: %v", err)
 	}
 
+	// Initialize DB repository
+	repo, err := NewRepository()
+	if err != nil {
+		log.Fatalf("Ошибка инициализации БД: %v", err)
+	}
+
 	return &ChatServer{
 		port:          port,
-		dbServerURL:   dbServerURL,
 		authServerURL: authServerURL,
 		redisClient:   redisClient,
+		repo:          repo,
 		clients:       make(map[*websocket.Conn]*ClientInfo),
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
@@ -100,6 +104,13 @@ func (s *ChatServer) Stop(ctx context.Context) error {
 		}
 	}
 
+	// Закрываем репозиторий БД
+	if s.repo != nil {
+		if err := s.repo.Close(); err != nil {
+			log.Printf("Ошибка закрытия БД: %v", err)
+		}
+	}
+
 	// Останавливаем HTTP сервер
 	if s.server != nil {
 		log.Println("Останавливаем HTTP сервер...")
@@ -135,6 +146,60 @@ func (s *ChatServer) closeAllConnections() {
 
 	// Очищаем карту клиентов
 	s.clients = make(map[*websocket.Conn]*ClientInfo)
+}
+
+// verifyToken проверяет токен через auth сервер
+func (s *ChatServer) verifyToken(token string) (int, error) {
+	log.Printf("Проверка токена через auth сервер: %s", s.authServerURL)
+
+	req, err := http.NewRequest("GET", s.authServerURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("ошибка создания запроса: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("ошибка запроса к auth серверу: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return 0, fmt.Errorf("401: Недействительный токен")
+	}
+
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("auth сервер вернул статус %d", resp.StatusCode)
+	}
+
+	var authResp AuthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
+		return 0, fmt.Errorf("ошибка парсинга ответа auth сервера: %v", err)
+	}
+
+	if authResp.UserID == 0 {
+		return 0, fmt.Errorf("неверный ответ от auth сервера")
+	}
+
+	log.Printf("Токен валиден для пользователя %d", authResp.UserID)
+	return authResp.UserID, nil
+}
+
+// saveMessageToDatabase сохраняет сообщение в БД
+func (s *ChatServer) saveMessageToDatabase(messageData MessageData) (*SavedMessageResponse, error) {
+	// Сохраняем напрямую в БД
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	id, err := s.repo.SaveMessage(ctx, messageData)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка сохранения в БД: %v", err)
+	}
+	savedResp := SavedMessageResponse{MessageID: id}
+	log.Printf("Сообщение успешно сохранено в БД с id=%d", id)
+	return &savedResp, nil
 }
 
 // handleHealth обработчик health check
@@ -238,80 +303,6 @@ func (s *ChatServer) handleDisconnect(conn *websocket.Conn) {
 	} else {
 		log.Printf("Неизвестный клиент отключился")
 	}
-}
-
-// verifyToken проверяет токен через auth сервер
-func (s *ChatServer) verifyToken(token string) (int, error) {
-	log.Printf("Проверка токена через auth сервер: %s", s.authServerURL)
-
-	req, err := http.NewRequest("GET", s.authServerURL, nil)
-	if err != nil {
-		return 0, fmt.Errorf("ошибка создания запроса: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("ошибка запроса к auth серверу: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 401 {
-		return 0, fmt.Errorf("401: Недействительный токен")
-	}
-
-	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("auth сервер вернул статус %d", resp.StatusCode)
-	}
-
-	var authResp AuthResponse
-	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
-		return 0, fmt.Errorf("ошибка парсинга ответа auth сервера: %v", err)
-	}
-
-	if authResp.UserID == 0 {
-		return 0, fmt.Errorf("неверный ответ от auth сервера")
-	}
-
-	log.Printf("Токен валиден для пользователя %d", authResp.UserID)
-	return authResp.UserID, nil
-}
-
-// saveMessageToDatabase сохраняет сообщение в БД
-func (s *ChatServer) saveMessageToDatabase(messageData MessageData) (*SavedMessageResponse, error) {
-	log.Printf("Отправка сообщения в БД по адресу: %s", s.dbServerURL)
-
-	jsonData, err := json.Marshal(messageData)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка сериализации: %v", err)
-	}
-
-	req, err := http.NewRequest("POST", s.dbServerURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("ошибка создания запроса: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("сетевая ошибка: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP ошибка: %d", resp.StatusCode)
-	}
-
-	var savedResp SavedMessageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&savedResp); err != nil {
-		return nil, fmt.Errorf("ошибка парсинга ответа БД: %v", err)
-	}
-
-	log.Printf("Сообщение успешно сохранено в БД. Статус: %d", resp.StatusCode)
-	return &savedResp, nil
 }
 
 // broadcastToChat рассылает сообщение всем участникам чата

@@ -7,9 +7,9 @@ import {
   cleanupOldCachedFiles,
   clearAllCachedFiles,
 } from "@/components/utils/indexedDBUtils";
-import { API_URL } from "@/components/utils/const";
+import { MEDIA_SERVICE_URL } from "@/components/utils/const";
 
-const API_BASE_URL = API_URL;
+const API_BASE_URL = MEDIA_SERVICE_URL;
 
 export interface FileChunk {
   chunk: string; // base64
@@ -36,7 +36,7 @@ export class FileService {
     try {
       const headers = await this.getAuthHeaders();
       const response = await fetch(
-        `${API_BASE_URL}/chat/${chatId}/messages/${messageId}/files`,
+        `${API_BASE_URL}/messages/${chatId}/${messageId}/files`,
         {
           method: "GET",
           headers,
@@ -66,7 +66,7 @@ export class FileService {
     try {
       const headers = await this.getAuthHeaders();
       const response = await fetch(
-        `${API_BASE_URL}/chat/file/${encodeURIComponent(filePath)}`,
+        `${API_BASE_URL}/file/${encodeURIComponent(filePath)}`,
         {
           method: "GET",
           headers,
@@ -132,7 +132,9 @@ export class FileService {
       const metadata = fileInfo.metadata;
       const meta = Array.isArray(metadata) ? metadata[0] : metadata;
       
-      if (!meta || !meta.chunk_count) {
+      // ВАЖНО: считаем файл "чанкнутым" только если chunk_count > 1
+      // (для обычных файлов chunk_count может быть 0 или 1, либо отсутствовать)
+      if (!meta || typeof meta.chunk_count !== "number" || meta.chunk_count <= 1) {
         // Попробуем получить с сервера
         const fileContent = await this.getFileContent(fileInfo.file_path);
 
@@ -174,7 +176,7 @@ export class FileService {
 
           const token = localStorage.getItem('token');
           const metaRes = await fetch(
-            `${API_URL}/chat/file_metadata/${chatId}/${fileInfo.message_id}/${fileInfo.file_id}`,
+            `${MEDIA_SERVICE_URL}/file_metadata/${chatId}/${fileInfo.message_id}/${fileInfo.file_id}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
 
@@ -189,7 +191,7 @@ export class FileService {
           const buffers: Uint8Array[] = [];
           for (let i = 0; i < meta.chunk_count; i++) {
             const chunkRes = await fetch(
-              `${API_URL}/chat/file_chunk/${chatId}/${fileInfo.message_id}/${fileInfo.file_id}/${i}`,
+              `${MEDIA_SERVICE_URL}/file_chunk/${chatId}/${fileInfo.message_id}/${fileInfo.file_id}/${i}`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             if (!chunkRes.ok) throw new Error(`Failed to fetch chunk ${i}`);
@@ -362,6 +364,22 @@ export class FileService {
     } catch (error) {
       console.error("Ошибка получения размера кеша:", error);
       return 0;
+    }
+  }
+
+  /**
+   * Удаляет файл
+   */
+  static async deleteFile(chatId: number, file_id: number): Promise<void> {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(
+        `${MEDIA_SERVICE_URL}/message/${chatId}/${file_id}`,
+        { headers: { Authorization: `Bearer ${token}` },method: "DELETE" }
+      );
+      if (!res.ok) throw new Error(`Failed to delete file ${file_id}`);
+    } catch (error) {
+      console.error("Ошибка удаления файла:", error);
     }
   }
 }

@@ -3,7 +3,7 @@ import { useTheme, themes } from "@/components/theme/ThemeProvider";
 import type { Messages, DecryptedFile } from "@/components/models/Messages";
 import type { UploadProgress } from "@/components/api/messageService";
 import { FileService } from "@/components/api/fileService";
-import { unwrapSymmetricKey } from "@/components/utils/crypto";
+import { unwrapSymmetricKey, decryptFile as decryptFileDirect } from "@/components/utils/crypto";
 import { useCrypto } from "@/components/context/CryptoContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -47,11 +47,13 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   // Проверяем, есть ли файлы в сообщении
   const hasMessageFiles = useCallback(() => {
-    return message.hasFiles || 
-           (message.metadata && Array.isArray(message.metadata) && message.metadata.length > 0) ||
-           message.message_type === "video" ||
-           message.message_type === "image" ||
-           message.message_type === "message_with_files";
+    return (
+      message.hasFiles ||
+      (Array.isArray(message.metadata) && message.metadata.length > 0) ||
+      message.message_type === "video" ||
+      message.message_type === "image" ||
+      message.message_type === "message_with_files"
+    );
   }, [message.hasFiles, message.metadata, message.message_type]);
 
   // Получаем envelope для текущего пользователя
@@ -100,68 +102,113 @@ const MessageItem: React.FC<MessageItemProps> = ({
         return;
       }
 
-      if (message.metadata[0].chunk_count! > 1) {
-        const chatId = message.chat_id;
-        const messageId = message.id;
-        const fileId = message.metadata[0].file_id!;
-        const token = localStorage.getItem('token');
-        const signal = new AbortController().signal;
+      const metas = Array.isArray(message.metadata) ? message.metadata : [];
 
-        try {
-          setLoading(true);
-          setError(null);
-          setProgress(0);
+      // Обрабатываем все файлы из метаданных
+      for (const meta of metas) {
+        const isChunked = typeof meta.chunk_count === 'number' && meta.chunk_count > 1;
 
-          const objectUrl = await fetchAndDecryptFile({
-            chatId,
-            messageId,
-            fileId,
-            messageKey,
-            token,
-            signal,
-            setProgress,
-            setError
-          });
+        if (isChunked) {
+          const chatId = message.chat_id;
+          const messageId = message.id;
+          const fileId = meta.file_id!;
+          const token = localStorage.getItem('token');
+          const controller = new AbortController();
+          const signal = controller.signal;
 
-          decFiles.push({
-            url: objectUrl!,
-            filename: message.metadata[0].filename,
-            mimetype: message.metadata[0].mimetype,
-            size: message.metadata[0].size,
-            file_id: message.metadata[0].file_id,
-          })
+          try {
+            setLoading(true);
+            setError(null);
+            setProgress(0);
 
-          // После того как chunked файл загружен
-          if (objectUrl && onFileUrlReady) {
-            onFileUrlReady(message, message.metadata[0].file_id!, objectUrl);
+            const objectUrl = await fetchAndDecryptFile({
+              chatId,
+              messageId,
+              fileId,
+              messageKey,
+              token,
+              signal,
+              setProgress,
+              setError
+            });
+
+            if (objectUrl) {
+              decFiles.push({
+                url: objectUrl,
+                filename: meta.filename,
+                mimetype: meta.mimetype,
+                size: meta.size,
+                file_id: meta.file_id,
+              });
+
+              if (onFileUrlReady) {
+                onFileUrlReady(message, meta.file_id!, objectUrl);
+              }
+            }
+          } catch (e) {
+            if (!signal.aborted) {
+              setError((e as Error).message);
+            }
+          } finally {
+            if (!signal.aborted) {
+              setLoading(false);
+            }
           }
-        } catch (e) {
-          if (!signal.aborted) {
-            setError((e as Error).message);
+        } else if (meta.encFile && meta.nonce) {
+          // Небольшой файл: расшифровываем напрямую из метаданных
+          try {
+            setLoading(true);
+            setError(null);
+            setProgress(10);
+            const file = await decryptFileDirect(
+              meta.encFile,
+              meta.nonce,
+              messageKey,
+              meta.filename,
+              meta.mimetype
+            );
+            const url = URL.createObjectURL(file);
+
+            decFiles.push({
+              url,
+              filename: meta.filename,
+              mimetype: meta.mimetype,
+              size: meta.size,
+              file_id: meta.file_id,
+            });
+
+            if (onFileUrlReady) {
+              onFileUrlReady(message, meta.file_id!, url);
+            }
+            setProgress(100);
+          } catch (e) {
+            console.error("Ошибка расшифровки небольшого файла:", e);
+          } finally {
+            setLoading(false);
           }
-        } finally {
-          if (!signal.aborted) {
+        } else {
+          // Фоллбек: если данных недостаточно, можно попробовать FileService (серверные файлы без чанков)
+          try {
+            setLoading(true);
+            setError(null);
+            setProgress(0);
+            const decryptedFiles = await FileService.getDecryptedFiles(
+              message.chat_id,
+              message.id,
+              messageKey,
+            );
+            decFiles.push(...decryptedFiles);
+            setProgress(100);
+          } catch (e) {
+            console.warn("Не удалось получить файлы через FileService как фоллбек", e);
+          } finally {
             setLoading(false);
           }
         }
       }
 
-      // Загружаем и расшифровываем файлы
-      const decryptedFiles = await FileService.getDecryptedFiles(
-        message.chat_id,
-        message.id,
-        messageKey,
-      );
-
-      decFiles.push(...decryptedFiles);
       setFiles(decFiles);
 
-      // После успешной загрузки обычных файлов, вызываем колбэк для каждого
-      decryptedFiles.forEach(file => {
-        if (onFileUrlReady && file.url && file.file_id) {
-          onFileUrlReady(message, file.file_id, file.url);
-        }
-      });
     } catch (error) {
       console.error("Ошибка загрузки файлов:", error);
       setFileError("Ошибка загрузки файлов");
@@ -458,6 +505,20 @@ const MessageItem: React.FC<MessageItemProps> = ({
           {message.message_type === "video" && (
             <div className="flex flex-col gap-2 mt-2">
               {renderVideoPlayer()}
+            </div>
+          )}
+
+          {/* Единый прогресс загрузки/расшифровки файлов */}
+          {hasMessageFiles() && loading && (
+            <div className="flex flex-col items-center gap-3 mt-2">
+              <div className="w-full aspect-square rounded-2xl overflow-hidden">
+                <Skeleton className="w-full h-full bg-white/30 dark:bg-gray-900/30 backdrop-blur-xl border border-white/20 shadow-md animate-shimmer-glass" />
+              </div>
+              <div className="mt-2 w-2/3">
+                <div className="w-full h-2 bg-white/30 dark:bg-gray-900/30 rounded-full overflow-hidden">
+                  <div className="h-2 bg-purple-400/60 transition-all duration-300" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
             </div>
           )}
 

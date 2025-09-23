@@ -1,5 +1,5 @@
 // src/components/api/Auth.tsx
-import { API_URL } from "@/components/utils/const";
+import { AUTH_SERVICE_URL, PROFILES_SERVICE_URL } from "@/components/utils/const";
 
 // Типы для регистрации
 export type RegisterStep1RequestData = {
@@ -50,7 +50,7 @@ export type RecoveryRequestData = {
 };
 
 export type RecoveryResponse = {
-  status: number;
+  status?: number;
   encryptedPrivateKeyByAccessKey?: string; // Base64 зашифрованный PKCS#8
   message?: string;
 };
@@ -85,7 +85,7 @@ export const registerStep1 = async (
   // В данном сценарии, RegisterForm.tsx уже генерирует и шифрует ключи,
   // и передает их в 'data'. Здесь мы просто отправляем их на сервер.
 
-  const response = await fetch(`${API_URL}/register_step1`, {
+  const response = await fetch(`${AUTH_SERVICE_URL}/register/step1`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -113,7 +113,7 @@ export const registerStep1 = async (
 export const registerStep2 = async (
   data: RegisterStep2RequestData,
 ): Promise<RegisterStep2Response> => {
-  const response = await fetch(`${API_URL}/register_step2`, {
+  const response = await fetch(`${AUTH_SERVICE_URL}/register/step2`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -136,7 +136,7 @@ export const registerStep2 = async (
 
 // Функция для входа пользователя
 export const login = async (data: LoginRequestData): Promise<LoginResponse> => {
-  const response = await fetch(`${API_URL}/login`, {
+  const response = await fetch(`${AUTH_SERVICE_URL}/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -166,7 +166,7 @@ export const getEncryptedPrivateKeyByAccessKey = async (
   data: RecoveryRequestData,
 ): Promise<RecoveryResponse> => {
   const response = await fetch(
-    `${API_URL}/get_encrypted_private_key_by_access_key`,
+    `${AUTH_SERVICE_URL}/recovery/recover_account_by_access_key`,
     {
       method: "POST",
       headers: {
@@ -185,7 +185,7 @@ export const getEncryptedPrivateKeyByAccessKey = async (
   const result = await response.json();
   return {
     status: response.status,
-    encryptedPrivateKeyByAccessKey: result.encrypted_private_key_by_access_key,
+    encryptedPrivateKeyByAccessKey: result.encryptedPrivateKeyByAccessKey,
     message: result.message || "Ключ успешно получен",
   };
 };
@@ -194,7 +194,7 @@ export const getEncryptedPrivateKeyByAccessKey = async (
 export const updatePasswordAndKeys = async (
   data: UpdatePasswordAndKeysRequestData,
 ): Promise<UpdatePasswordAndKeysResponse> => {
-  const response = await fetch(`${API_URL}/update_password_and_keys`, {
+  const response = await fetch(`${AUTH_SERVICE_URL}/recovery/update_password_and_keys`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -222,7 +222,7 @@ export const getCurrentUser = async (): Promise<UserData> => {
     throw new Error("Токен не найден");
   }
 
-  const response = await fetch(`${API_URL}/user`, {
+  const response = await fetch(`${PROFILES_SERVICE_URL}/profiles`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -248,7 +248,7 @@ export const getPublicKeyByLogin = async (token: string, login: number) => {
     };
   }
 
-  const response = await fetch(`${API_URL}/get_public_key`, {
+  const response = await fetch(`${AUTH_SERVICE_URL}/get_public_key`, {
     // Предполагаем такой эндпоинт на сервере
     method: "POST", // Или GET с query параметром, если сервер так настроен
     headers: {

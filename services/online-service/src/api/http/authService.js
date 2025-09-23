@@ -12,7 +12,8 @@ class AuthService {
     async validateToken(token) {
         try {
             logger.debug(`Проверка токена через auth сервер: ${this.host}`);
-            const authUrl = `${this.host}/auth/verify`;
+            const authUrl = `${this.host}/auth-service/auth/verify`;
+            logger.info(`Проверка токена через auth сервер: ${authUrl}`);
             const response = await axios.get(authUrl, {
                 headers: {
                     'Content-Type': 'application/json',

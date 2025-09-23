@@ -4,7 +4,7 @@ import { CardHeader, CardTitle } from "./card";
 import { Avatar, AvatarImage, AvatarFallback } from "./avatar";
 import { getInitials, getUserStatusTime } from "@/components/utils/format";
 import { useTheme, getTextStyle } from "@/components/theme/ThemeProvider";
-import { API_URL } from "@/components/utils/const";
+import { PROFILES_SERVICE_URL } from "@/components/utils/const";
 
 interface UserInfoProps {
   user: {
@@ -27,7 +27,7 @@ const UserInfo: React.FC<UserInfoProps> = React.memo(({ user, status, userStatus
   
   // Мемоизируем URL аватара
   const avatarUrl = useMemo(() => 
-    `${API_URL}/storage/avatars/${user.companion_avatar}?${avatarTime}`,
+    `${PROFILES_SERVICE_URL}/storage/avatars/${user.companion_avatar}?${avatarTime}`,
     [user.companion_avatar, avatarTime]
   );
   

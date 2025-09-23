@@ -14,7 +14,7 @@ import Settings from "@/components/messenger/Settings";
 import SearchUser from "@/components/messenger/SearchUser";
 import type { User } from "@/components/models/User";
 import { getInitials } from "@/components/utils/format";
-import { API_URL } from "@/components/utils/const";
+import { PROFILES_SERVICE_URL } from "@/components/utils/const";
 import type { ContactStatus } from "@/components/api/statusClient";
 import { useCrypto } from "@/components/context/CryptoContext";
 import { decryptMessage, unwrapSymmetricKey } from "@/components/utils/crypto";
@@ -366,7 +366,7 @@ const UserCard: React.FC<{
               className={`h-12 w-12 border-2 transition-all duration-200 ${isOnline ? "border-green-400" : "border-red-400"}`}
             >
               <AvatarImage
-                src={`${API_URL}/storage/avatars/${user.companion_avatar}?${new Date().getTime()}`}
+                src={`${PROFILES_SERVICE_URL}/storage/avatars/${user.companion_avatar}?${new Date().getTime()}`}
                 alt={user.companion_userName}
                 className="object-cover w-full h-full"
               />

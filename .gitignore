@@ -150,17 +150,21 @@ dmypy.json
 # Messenger storage
 backend/core-api/storage/*
 
-redis/redis-data
-nginx/logs
-nginx/certs
-fail2ban/db
-data/
-grafana/
-
+docker-services/redis/redis-data
+docker-services/nginx/logs
+docker-services/nginx/certs
+docker-services/fail2ban/db
+docker-services/postgres
+docker-services/grafana/
 
 mobile/.gitignore
 messanger-ren.ru
 
 generate_secret_key.py
 compose.certbot.yml
-frontend/.env.production\
+frontend/.env.production
+
+docker-services/loki/data/
+services/profiles-service/storage/avatars/Ghost.jpg
+services/profiles-service/storage/avatars/Taiidzy.jpg
+mobile/

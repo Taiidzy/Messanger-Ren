@@ -1,4 +1,4 @@
-import { API_URL } from "@/components/utils/const";
+import { CHAT_SERVICE_URL } from "@/components/utils/const";
 import type { MessageData } from "@/components/models/Messages";
 
 export const getChat = async (token: string) => {
@@ -6,7 +6,7 @@ export const getChat = async (token: string) => {
     return null;
   }
 
-  const response = await fetch(`${API_URL}/user/chats`, {
+  const response = await fetch(`${CHAT_SERVICE_URL}/chats`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -29,13 +29,13 @@ export const getChat = async (token: string) => {
 };
 
 export const createChat = async (token: string, userId: number) => {
-  const response = await fetch(`${API_URL}/chat/create`, {
+  const response = await fetch(`${CHAT_SERVICE_URL}/chats`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ companion_id: userId }),
+    body: JSON.stringify({ "companion_id": userId }),
   });
 
   if (!response.ok) {
@@ -47,7 +47,8 @@ export const createChat = async (token: string, userId: number) => {
     return 500;
   }
 
-  return 201;
+  const result = await response.json();
+  return result;
 };
 
 export const getMessages = async (
@@ -58,7 +59,7 @@ export const getMessages = async (
     return null;
   }
 
-  const response = await fetch(`${API_URL}/chat/${chatId}/messages`, {
+  const response = await fetch(`${CHAT_SERVICE_URL}/chats/${chatId}/messages`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",

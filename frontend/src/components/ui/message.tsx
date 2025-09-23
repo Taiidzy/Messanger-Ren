@@ -1,6 +1,6 @@
 import React, { useState, useCallback  } from "react";
 import { useTheme, themes } from "@/components/theme/ThemeProvider";
-import type { Messages } from "@/components/models/Messages";
+import type { Messages, Metadata } from "@/components/models/Messages";
 import type { UploadProgress } from "@/components/api/messageService";
 import MessageItem from "@/components/ui/message-item";
 import {
@@ -20,7 +20,7 @@ interface MessageProps {
   currentUserId?: number; // ID текущего пользователя для определения своих сообщений
   uploadProgress?: UploadProgress[]; // Прогресс загрузки для pending-сообщений
   onImageLoad?: () => void; // Колбэк для уведомления о загрузке изображения
-  onDeleteMessage?: (messageId: number) => void; // Колбэк для удаления сообщения
+  onDeleteMessage?: (messageId: number, metadata: Metadata[] | undefined) => void; // Колбэк для удаления сообщения
   onEditMessage?: (messageId: number) => void; // Колбэк для редактирования сообщения
   editingMessageId?: number | null;
   editedText?: string;
@@ -147,7 +147,7 @@ const Message: React.FC<MessageProps> = ({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
-                  onDeleteMessage?.(message.id!);
+                  onDeleteMessage?.(message.id!, message.metadata);
                   handleCloseMenu();
                 }}
                 className="flex items-center gap-2 cursor-pointer text-red-600 hover:text-red-700 focus:text-red-700"
@@ -193,7 +193,7 @@ const Message: React.FC<MessageProps> = ({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
-                  onDeleteMessage?.(message.id!);
+                  onDeleteMessage?.(message.id!, message.metadata);
                   handleCloseMenu();
                 }}
                 className="flex items-center gap-2 cursor-pointer text-red-600 hover:text-red-700 focus:text-red-700"
@@ -219,7 +219,7 @@ const Message: React.FC<MessageProps> = ({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
-                  onDeleteMessage?.(message.id!);
+                  onDeleteMessage?.(message.id!, message.metadata);
                   handleCloseMenu();
                 }}
                 className="flex items-center gap-2 cursor-pointer text-red-600 hover:text-red-700 focus:text-red-700"
