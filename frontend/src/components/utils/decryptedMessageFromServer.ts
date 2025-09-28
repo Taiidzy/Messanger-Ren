@@ -74,10 +74,10 @@ export const decryptedMessagesFromServer = async (
         decryptedText = "";
       }
 
+      console.log(messageData);
+
       decryptedMessages.push({
-        id:
-        messageData.id ??
-        Date.now() + Math.floor(Math.random() * (10000000 - 1 + 1)) + 1,
+        id: messageData.id ?? Date.now() + Math.floor(Math.random() * (10000000 - 1 + 1)) + 1,
         chat_id: messageData.chat_id,
         sender_id: messageData.sender_id,
         message: decryptedText,
@@ -91,6 +91,7 @@ export const decryptedMessagesFromServer = async (
         envelopes: messageData.envelopes,
         metadata: messageData.metadata ?? [], // всегда добавляем metadata
       });
+      console.log(decryptedMessages);
     } catch (decryptionError) {
       console.error("Ошибка расшифровки сообщения:", decryptionError);
     }

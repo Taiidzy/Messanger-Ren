@@ -56,6 +56,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure static directory exists before mounting
+os.makedirs("storage/avatars", exist_ok=True)
 app.mount("/storage/avatars", StaticFiles(directory="storage/avatars"), name="avatar storage")
 
 app.include_router(profiles_router)

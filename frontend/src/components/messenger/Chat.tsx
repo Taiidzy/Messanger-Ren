@@ -50,13 +50,18 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
   const token = localStorage.getItem("token");
 
   const [messages, setMessages] = useState<Messages[]>([]);
+  // Пагинация
+  const [offset, setOffset] = useState(0);
+  const [limit] = useState(50);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editedMessageText, setEditedMessageText] = useState<string>("");
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Исправлено: уточнен тип для scrollbarRef, чтобы TypeScript знал о методе getValues()
   const scrollbarRef = useRef<Scrollbar | null>(null);
@@ -74,7 +79,7 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
     const userStatus = contactStatuses.find((status) => status.user_id === user.companion_id);
     const userStatusTime = userStatus?.last_seen || '';
     const status = userStatus?.status === "online";
-    
+
     return {
       user: {
         companion_avatar: user.companion_avatar,
@@ -108,37 +113,43 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
       const scrollHeight = values.scrollHeight ?? (scrollbarRef.current as any).scrollHeight ?? 0;
       const clientHeight = values.clientHeight ?? (scrollbarRef.current as any).clientHeight ?? 0;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
-      
+      const isAtTop = scrollTop <= 20;
+
       isNearBottomRef.current = isNearBottom;
       setShowScrollButton(!isNearBottom && messages.length > 0);
-      
+
       // Определяем, прокручивает ли пользователь вручную
       const isScrollingUp = scrollTop < lastScrollTop.current;
       const isScrollingDown = scrollTop > lastScrollTop.current;
-      
+
       if (isScrollingUp || (isScrollingDown && !isNearBottom)) {
         setIsUserScrolling(true);
-        
+
         // Сбрасываем флаг после паузы в прокрутке
         if (scrollTimer.current) {
           clearTimeout(scrollTimer.current);
         }
-        
+
         scrollTimer.current = setTimeout(() => {
           setIsUserScrolling(false);
         }, 1000);
       }
-      
+
+      // Загрузка более старых сообщений при прокрутке к верху
+      if (isAtTop && hasMore && !isLoadingMore) {
+        void loadOlderMessages();
+      }
+
       lastScrollTop.current = scrollTop;
     },
-    [messages.length],
+    [messages.length, hasMore, isLoadingMore],
   );
 
   // Функция для безопасной прокрутки
   const scrollToBottomSafe = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
     if (messagesEndRef.current) {
       try {
-        messagesEndRef.current.scrollIntoView({ 
+        messagesEndRef.current.scrollIntoView({
           behavior,
           block: 'end',
           inline: 'nearest'
@@ -155,41 +166,47 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
   // Стабилизируем обработчики с помощью useCallback
   const handleMessageReceived = useCallback(
     (newMessage: Messages) => {
-      
+
       // debug log removed for production cleanliness
       setMessages((prev) => {
+
         // --- 1. Основная проверка: Найти сообщение по ID ---
         // Это самый надежный способ, который заменит и текстовые, и файловые "pending" сообщения.
         const existingIndex = prev.findIndex(msg => msg.id === newMessage.id);
-        
+
         if (existingIndex !== -1) {
           const updatedMessages = [...prev];
           updatedMessages[existingIndex] = {
             ...newMessage,
             status: "sent", // Помечаем как полученное сервером
-          };
+          } as Messages;
           return updatedMessages;
         }
 
         // --- 2. Запасной вариант: Найти последнее "ожидающее" сообщение с файлом ---
         // Этот блок сработает, только если сообщение не было найдено по ID (например, если сервер изменил ID).
-        if (newMessage.sender_id === user.user_id && newMessage.hasFiles) {
+        if (newMessage.sender_id === user.user_id && (newMessage as any).hasFiles) {
           // Ищем индекс последнего "pending" сообщения с файлами от текущего пользователя.
           // Поиск с конца (lastIndexOf) безопаснее, если было отправлено несколько файлов подряд.
-          const lastPendingIndex = prev.map(m => m.status === 'pending' && m.sender_id === user.user_id && m.hasFiles).lastIndexOf(true);
-          
+          const lastPendingIndex = prev.map(m => m.status === 'pending' && m.sender_id === user.user_id && (m as any).hasFiles).lastIndexOf(true);
+
           if (lastPendingIndex !== -1) {
             const updatedMessages = [...prev];
             updatedMessages[lastPendingIndex] = {
               ...newMessage,
               status: "sent",
-            };
+            } as Messages;
+            // Гарантируем порядок
+            updatedMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
             return updatedMessages;
           }
         }
 
         // --- 3. Если ничего не найдено для замены, добавляем как новое ---
-        return [...prev, { ...newMessage, status: "sent" }];
+        const updated = [...prev, { ...newMessage, status: "sent" } as Messages];
+        // Держим общий порядок по дате (старые -> новые)
+        updated.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        return updated;
       });
 
       // Очищаем прогресс-бар после обновления состояния, если это было наше сообщение с файлом
@@ -303,11 +320,14 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
         }
         return;
       }
-      
+
+      // Сброс состояния пагинации при смене чата/ключа
       setMessages([]);
-      
+      setOffset(0);
+      setHasMore(true);
+
       try {
-        const response = await getMessages(token, user.chat_id);
+        const response = await getMessages(token, user.chat_id, 0, limit);
         if (response === 401) {
           if (!hasShownTokenErrorRef.current) {
             showToast({
@@ -324,7 +344,7 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
           }
           return;
         }
-        
+
         if (Array.isArray(response)) {
           if (privateKey) {
             const decrypted = await decryptedMessagesFromServer(
@@ -332,7 +352,13 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
               privateKey,
               user.user_id,
             );
-            setMessages(decrypted);
+            // Сервер отдает сообщения с новыми сначала. Для чата требуется порядок сверху-вниз: старые -> новые
+            const sortedAsc = [...decrypted].sort((a, b) => {
+              return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            });
+            setMessages(sortedAsc);
+            setOffset(response.length);
+            setHasMore(response.length === limit);
           } else {
             setMessages([]);
             console.warn("Нет приватного ключа для расшифровки сообщений");
@@ -348,9 +374,70 @@ const Chat: React.FC<UserProps> = ({ user, contactStatuses }) => {
         });
       }
     };
-    
+
     fetchMessages();
-  }, [user, privateKey, showToast, navigate]);
+  }, [user, privateKey, showToast, navigate, limit]);
+
+  // Функция подгрузки старых сообщений (предыдущие пачки)
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setIsLoadingMore(false);
+      return;
+    }
+    try {
+      // Сохраняем позиции скролла до обновления
+      // @ts-expect-error getValues есть у Scrollbar инстанса
+      const valuesBefore = scrollbarRef.current?.getValues?.() || {};
+      const prevScrollTop = valuesBefore.scrollTop ?? 0;
+      const prevScrollHeight = valuesBefore.scrollHeight ?? 0;
+
+      const response = await getMessages(token, user.chat_id, offset, limit);
+      if (Array.isArray(response) && response.length > 0) {
+        const decrypted = await decryptedMessagesFromServer(
+          response,
+          privateKey!,
+          user.user_id,
+        );
+
+        // Сортируем новую пачку по возрастанию
+        const batchAsc = [...decrypted].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        setMessages((prev) => {
+          const merged = [...batchAsc, ...prev];
+          // На всякий случай гарантируем общий порядок
+          merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          return merged;
+        });
+
+        setOffset(offset + response.length);
+        setHasMore(response.length === limit);
+
+        // Восстанавливаем позицию скролла с учетом добавленной высоты
+        setTimeout(() => {
+          // @ts-expect-error getValues есть у Scrollbar инстанса
+          const valuesAfter = scrollbarRef.current?.getValues?.() || {};
+          const newScrollHeight = valuesAfter.scrollHeight ?? prevScrollHeight;
+          const delta = newScrollHeight - prevScrollHeight;
+          const targetTop = (prevScrollTop ?? 0) + delta;
+          try {
+            // @ts-expect-error scrollTo доступен у Scrollbar
+            scrollbarRef.current?.scrollTo?.({ top: targetTop, behavior: 'auto' });
+          } catch {
+            // ignore
+          }
+        }, 0);
+      } else {
+        setHasMore(false);
+      }
+    } catch (e) {
+      console.error("Ошибка загрузки старых сообщений:", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [offset, limit, user.chat_id, user.user_id, privateKey, isLoadingMore, hasMore]);
 
   const handleSendMessage = useCallback(
     async (messageText: string) => {

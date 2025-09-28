@@ -38,6 +38,8 @@ export const createChat = async (token: string, userId: number) => {
     body: JSON.stringify({ "companion_id": userId }),
   });
 
+  console.log(response);
+
   if (!response.ok) {
     if (response.status === 401) {
       console.error("Вы не авторизованы");
@@ -47,19 +49,20 @@ export const createChat = async (token: string, userId: number) => {
     return 500;
   }
 
-  const result = await response.json();
-  return result;
+  return 201;
 };
 
 export const getMessages = async (
   token: string,
   chatId: number,
+  offset: number = 0,
+  limit: number = 50,
 ): Promise<MessageData[] | null | 401> => {
   if (!token) {
     return null;
   }
 
-  const response = await fetch(`${CHAT_SERVICE_URL}/chats/${chatId}/messages`, {
+  const response = await fetch(`${CHAT_SERVICE_URL}/chats/${chatId}/messages?offset=${offset}&limit=${limit}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
