@@ -175,7 +175,7 @@ services:
 # ======================= DATABASE =======================
 
   postgres:
-    image: postgres
+    image: postgres:17
     container_name: postgres
     restart: always
     environment:

@@ -11,13 +11,13 @@ from app.db.models import User
 from app.schemas import auth
 from app.core.config import settings
 from app.core import security
-
 # Настройка логгера
 logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 def login(user_credentials: auth.LoginRequest, db: Session) -> auth.LoginResponse | int:
+    logger.info(f"Login attempt for user '{user_credentials.login}'")
     """
     Функция для логина пользователя.
     Принимает db как обычный параметр Session.

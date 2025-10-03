@@ -31,9 +31,4 @@ async def get_avatar(username: str, db: Session = Depends(get_db)):
     if user is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     avatar_path = "storage/avatars/" + user.avatar
-    headers = {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
-        "Expires": "0",
-    }
-    return FileResponse(avatar_path, headers=headers)
+    return FileResponse(avatar_path)
