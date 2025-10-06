@@ -167,4 +167,3 @@ frontend/.env.production
 docker-services/loki/data/
 services/profiles-service/storage/avatars/Ghost.jpg
 services/profiles-service/storage/avatars/Taiidzy.jpg
-mobile/
