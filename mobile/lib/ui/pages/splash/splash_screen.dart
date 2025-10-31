@@ -5,14 +5,14 @@ import 'dart:math' as math;
 
 import 'package:Ren/core/api/user/chats.dart';
 
-import 'package:Ren/core/models/notification.data.dart';
-import 'package:Ren/core/models/user.chats.model.dart';
+import 'package:Ren/core/models/notification.dart';
+import 'package:Ren/core/models/chat.dart';
 
 import 'package:Ren/core/notifications/notifications.dart';
 
 import 'package:Ren/core/encryption/cryptoprovider.dart';
 import 'package:Ren/core/utils/auth/checkauth.dart';
-import 'package:Ren/core/utils/decrypt_messages.dart';
+import 'package:Ren/core/crypto/message_cipher_service.dart';
 
 import 'package:Ren/ui/pages/home/home_screen.dart';
 import 'package:Ren/ui/pages/auth/auth_screen.dart';
@@ -150,6 +150,9 @@ class _SplashScreenState extends State<SplashScreen>
 
         chats = await ChatsAPI.getChats(token, context);
         
+        // Инициализируем сервис шифрования/дешифрования
+        const cipher = MessageCipherService();
+        
         // Дешифровываем последние сообщения в чатах, если они зашифрованы
         if (cryptoProvider.privateKey != null && cryptoProvider.userId != null) {
           for (int i = 0; i < chats.length; i++) {
@@ -187,7 +190,7 @@ class _SplashScreenState extends State<SplashScreen>
                   'metadata': lastMessage.metadata?.map((m) => m.toJson()).toList(),
                 };
                 
-                final decryptedMessage = await DecryptMessages.decryptWebSocketMessage(
+                final decryptedMessage = await cipher.decryptWebSocketMessage(
                   messageData,
                   cryptoProvider.privateKey!,
                   cryptoProvider.userId!,

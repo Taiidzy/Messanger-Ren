@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:Ren/core/utils/logout/logout.dart';
 
-import 'package:Ren/core/models/user.messages.model.dart';
+import 'package:Ren/core/models/message.dart';
 
 import 'package:Ren/core/utils/constants/apiurl.dart';
 

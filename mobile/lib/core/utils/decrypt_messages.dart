@@ -1,6 +1,6 @@
 import 'package:pointycastle/export.dart';
 
-import 'package:Ren/core/models/user.messages.model.dart';
+import 'package:Ren/core/models/message.dart';
 import 'package:Ren/core/models/envelope.dart';
 import 'package:Ren/core/models/metadata.dart';
 import 'package:Ren/core/encryption/crypto.dart';

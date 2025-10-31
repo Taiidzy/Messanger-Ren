@@ -1,36 +1,30 @@
-import 'dart:convert';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'package:pointycastle/export.dart' hide State, Padding;
-
-import 'package:Ren/core/api/websocket_service.dart';
 
 import 'package:Ren/core/encryption/cryptoprovider.dart';
-import 'package:Ren/core/encryption/crypto.dart';
-import 'package:Ren/core/models/user.messages.model.dart';
-import 'package:Ren/core/models/user.chats.model.dart';
+import 'package:Ren/core/models/message.dart';
+import 'package:Ren/core/models/chat.dart';
 
+import 'package:Ren/core/api/chat_api.dart';
+import 'package:Ren/core/crypto/message_cipher_service.dart';
+import 'package:Ren/features/chat/data/chat_repository.dart';
 import 'package:Ren/core/providers/websocket_provider.dart';
 
 import 'package:Ren/core/utils/logger/logger.dart';
-import 'package:Ren/core/utils/decrypt_messages.dart';
-import 'package:Ren/core/utils/logout/logout.dart';
-import 'package:Ren/core/utils/constants/apiurl.dart';
 
 import 'package:Ren/ui/theme/themes.dart';
 
 import 'package:Ren/ui/widgets/glassmorphicbutton.dart';
-import 'package:Ren/ui/widgets/chat_bubble.dart';
+import 'package:Ren/features/chat/presentation/widgets/chat_bubble.dart';
 import 'package:Ren/ui/widgets/renlogo.dart';
+import 'package:Ren/features/chat/presentation/chat_controller.dart';
 
 class ChatScreen extends StatefulWidget {
   final bool hideAppBar;
   final Chats chat;
 
-  const ChatScreen({Key? key, this.hideAppBar = false, required this.chat})
-    : super(key: key);
+  const ChatScreen({Key? key, this.hideAppBar = false, required this.chat}) : super(key: key);
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -39,23 +33,18 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   late Chats chat;
   List<Messages> messages = [];
-  String? _token;
   bool _isLoading = true;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  // WebSocket провайдер
-  late WebSocketProvider _webSocketProvider;
-
-  // Криптографические ключи
-  ECPrivateKey? _privateKey;
-  ECPublicKey? _publicKey;
+  // Контроллер чата (содержит бизнес-логику)
+  late ChatController _controller;
+  late VoidCallback _controllerListener;
 
   @override
   void initState() {
     super.initState();
     chat = widget.chat;
-    _webSocketProvider = WebSocketProvider();
     _initializeData();
   }
 
@@ -68,79 +57,36 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = true;
         messages = [];
       });
-      _initializeData();
+      _controller.init(chat);
     }
   }
 
   Future<void> _initializeData() async {
     try {
-      final cryptoProvider = Provider.of<CryptoProvider>(
-        context,
-        listen: false,
+      final cryptoProvider = Provider.of<CryptoProvider>(context, listen: false);
+
+      // Инициализируем контроллер с зависимостями
+      _controller = ChatController(
+        repository: ChatRepository(
+          chatApi: const ChatApi(),
+          cipher: const MessageCipherService(),
+        ),
+        wsProvider: WebSocketProvider(),
+        crypto: cryptoProvider,
       );
 
-      String? token = cryptoProvider.token;
-      token ??= await cryptoProvider.getToken();
-
-      if (token != null && cryptoProvider.privateKey != null) {
+      // Подписываемся на изменения контроллера
+      _controllerListener = () {
+        if (!mounted) return;
         setState(() {
-          _token = token;
-          _privateKey = cryptoProvider.privateKey;
-          _publicKey = cryptoProvider.publicKey;
+          messages = _controller.messages;
+          _isLoading = _controller.isLoading;
         });
+        _scrollToBottom();
+      };
+      _controller.addListener(_controllerListener);
 
-        // Инициализируем WebSocket провайдер
-        await _webSocketProvider.initialize(cryptoProvider, chat);
-
-        // Подписываемся на изменения сообщений
-        _webSocketProvider.addListener(_onWebSocketUpdate);
-
-        // Загружаем существующие сообщения
-        final response = await http.get(
-          Uri.parse('${Apiurl.CHAT_SERVICE}/chats/${chat.chatId}/messages'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_token',
-          },
-        );
-
-        if (response.statusCode == 401) {
-          await Logout.logout(context, 0);
-          return;
-        }
-
-        if (response.statusCode == 200 && mounted) {
-          // Парсим JSON напрямую и дешифруем
-          final List<dynamic> messagesJson = json.decode(response.body);
-          final decryptedMessages =
-              await DecryptMessages.decryptMessagesFromServer(
-                messagesJson,
-                _privateKey!,
-                cryptoProvider.userId ?? 0,
-              );
-
-          // Добавляем расшифрованные сообщения в WebSocketProvider
-          for (final message in decryptedMessages) {
-            _webSocketProvider.addMessage(message);
-          }
-
-          setState(() {
-            messages = decryptedMessages;
-            _isLoading = false;
-          });
-          _scrollToBottom();
-        } else if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
+      await _controller.init(chat);
     } catch (error) {
       logger.e('Error initializing chat: $error');
       if (mounted) {
@@ -148,37 +94,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _isLoading = false;
         });
       }
-    }
-  }
-
-  void _onWebSocketUpdate() {
-    if (mounted) {
-      setState(() {
-        // Объединяем локальные сообщения с новыми из WebSocket
-        final webSocketMessages =
-            _webSocketProvider.messages
-                .where((msg) => msg.chatId == chat.chatId)
-                .toList();
-
-        // Создаем Map для быстрого поиска по ID
-        final Map<int, Messages> messageMap = {};
-
-        // Добавляем существующие сообщения
-        for (final msg in messages) {
-          messageMap[msg.id] = msg;
-        }
-
-        // Добавляем/обновляем сообщения из WebSocket
-        for (final msg in webSocketMessages) {
-          messageMap[msg.id] = msg;
-        }
-
-        // Преобразуем обратно в список и сортируем по времени
-        messages =
-            messageMap.values.toList()
-              ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      });
-      _scrollToBottom();
     }
   }
 
@@ -198,8 +113,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
-    _webSocketProvider.removeListener(_onWebSocketUpdate);
-    _webSocketProvider.dispose();
+    _controller.removeListener(_controllerListener);
+    _controller.dispose();
     super.dispose();
   }
 
@@ -211,24 +126,17 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.transparent,
-      appBar:
-          (hasAppBar || widget.hideAppBar)
-              ? null
-              : _buildModernAppBar(context, isDark),
+      appBar: (hasAppBar || widget.hideAppBar) ? null : _buildModernAppBar(context, isDark),
       body: Container(
         decoration: BoxDecoration(
-          gradient:
-              isDark
-                  ? AppGradients.darkBackground
-                  : AppGradients.lightBackground,
+          gradient: isDark ? AppGradients.darkBackground : AppGradients.lightBackground,
         ),
         child: Column(
           children: [
             Expanded(
-              child:
-                  _isLoading
-                      ? _buildLoadingState(context, isDark)
-                      : messages.isEmpty
+              child: _isLoading
+                  ? _buildLoadingState(context, isDark)
+                  : messages.isEmpty
                       ? _buildEmptyState(context, isDark)
                       : _buildMessagesWithCustomScroll(context, isDark),
             ),
@@ -242,10 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
   PreferredSizeWidget _buildModernAppBar(BuildContext context, bool isDark) {
     return AppBar(
       elevation: 0,
-      backgroundColor: (isDark
-              ? AppColors.darkBackground
-              : AppColors.lightBackground)
-          .withOpacity(0.95),
+      backgroundColor: (isDark ? AppColors.darkBackground : AppColors.lightBackground).withOpacity(0.95),
       flexibleSpace: Container(
         decoration: BoxDecoration(
           gradient: isDark ? AppGradients.glassDark : AppGradients.glassLight,
@@ -260,9 +165,9 @@ class _ChatScreenState extends State<ChatScreen> {
       title: Text(
         chat.companionUserName,
         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: isDark ? AppColors.neutral100 : AppColors.neutral900,
-        ),
+              fontWeight: FontWeight.w600,
+              color: isDark ? AppColors.neutral100 : AppColors.neutral900,
+            ),
       ),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new, size: 20),
@@ -273,16 +178,11 @@ class _ChatScreenState extends State<ChatScreen> {
         Container(
           margin: const EdgeInsets.only(right: 8),
           decoration: BoxDecoration(
-            color:
-                isDark
-                    ? AppColors.neutral800.withOpacity(0.3)
-                    : AppColors.neutral200.withOpacity(0.3),
+            color: isDark ? AppColors.neutral800.withOpacity(0.3) : AppColors.neutral200.withOpacity(0.3),
             borderRadius: BorderRadius.circular(12),
           ),
           child: IconButton(
-            onPressed: () {
-              // Действия для настроек чата
-            },
+            onPressed: () {},
             icon: const Icon(Icons.more_vert_rounded, size: 20),
             color: isDark ? AppColors.neutral300 : AppColors.neutral700,
           ),
@@ -303,8 +203,8 @@ class _ChatScreenState extends State<ChatScreen> {
           Text(
             'Загрузка сообщений...',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: isDark ? AppColors.neutral400 : AppColors.neutral600,
-            ),
+                  color: isDark ? AppColors.neutral400 : AppColors.neutral600,
+                ),
           ),
         ],
       ),
@@ -319,10 +219,7 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkCard : AppColors.lightCard,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isDark ? AppColors.neutral800 : AppColors.neutral200,
-            width: 1,
-          ),
+          border: Border.all(color: isDark ? AppColors.neutral800 : AppColors.neutral200, width: 1),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(isDark ? 0.1 : 0.05),
@@ -356,17 +253,17 @@ class _ChatScreenState extends State<ChatScreen> {
             Text(
               'Пока нет сообщений',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: isDark ? AppColors.neutral100 : AppColors.neutral900,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: isDark ? AppColors.neutral100 : AppColors.neutral900,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               'Отправьте первое сообщение, чтобы начать разговор',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: isDark ? AppColors.neutral400 : AppColors.neutral600,
-              ),
+                    color: isDark ? AppColors.neutral400 : AppColors.neutral600,
+                  ),
             ),
           ],
         ),
@@ -376,42 +273,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessagesWithCustomScroll(BuildContext context, bool isDark) {
     final hasAppBar = Scaffold.maybeOf(context)?.hasAppBar ?? false;
-    final appBarHeight =
-        (hasAppBar || !widget.hideAppBar)
-            ? (kToolbarHeight + MediaQuery.of(context).padding.top)
-            : 0.0;
+    final appBarHeight = (hasAppBar || !widget.hideAppBar) ? (kToolbarHeight + MediaQuery.of(context).padding.top) : 0.0;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollNotification) {
-        // Обрабатываем скролл без setState для лучшей производительности
-        return false; // Позволяем другим виджетам обработать уведомления
+        return false;
       },
       child: CustomScrollView(
         controller: _scrollController,
         slivers: [
-          // Динамический отступ в зависимости от позиции скролла
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 8.0, // Базовый отступ
-            ),
-          ),
-          // Дополнительный отступ для первого сообщения
+          const SliverToBoxAdapter(child: SizedBox(height: 8.0)),
           SliverLayoutBuilder(
             builder: (context, constraints) {
-              // Получаем информацию о скролле без setState
-              final scrollOffset =
-                  _scrollController.hasClients ? _scrollController.offset : 0.0;
-
-              // Если мы близко к верху, добавляем дополнительный отступ
-              final additionalPadding =
-                  scrollOffset <= 100.0 ? appBarHeight : 0.0;
-
-              return SliverToBoxAdapter(
-                child: SizedBox(height: additionalPadding),
-              );
+              final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+              final additionalPadding = scrollOffset <= 100.0 ? appBarHeight : 0.0;
+              return SliverToBoxAdapter(child: SizedBox(height: additionalPadding));
             },
           ),
-          // Список сообщений
           SliverList(
             delegate: SliverChildBuilderDelegate((context, index) {
               final message = messages[index];
@@ -424,8 +302,7 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             }, childCount: messages.length),
           ),
-          // Нижний отступ
-          SliverToBoxAdapter(child: const SizedBox(height: 8.0)),
+          const SliverToBoxAdapter(child: SizedBox(height: 8.0)),
         ],
       ),
     );
@@ -436,12 +313,7 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        border: Border(
-          top: BorderSide(
-            color: isDark ? AppColors.neutral800 : AppColors.neutral200,
-            width: 1,
-          ),
-        ),
+        border: Border(top: BorderSide(color: isDark ? AppColors.neutral800 : AppColors.neutral200, width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -450,12 +322,9 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color:
-                      isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                  color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: isDark ? AppColors.neutral700 : AppColors.neutral200,
-                  ),
+                  border: Border.all(color: isDark ? AppColors.neutral700 : AppColors.neutral200),
                 ),
                 child: TextField(
                   controller: _messageController,
@@ -463,20 +332,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   textInputAction: TextInputAction.newline,
                   decoration: InputDecoration(
                     hintText: 'Введите сообщение...',
-                    hintStyle: TextStyle(
-                      color:
-                          isDark ? AppColors.neutral400 : AppColors.neutral500,
-                    ),
+                    hintStyle: TextStyle(color: isDark ? AppColors.neutral400 : AppColors.neutral500),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   ),
-                  style: TextStyle(
-                    color: isDark ? AppColors.neutral100 : AppColors.neutral900,
-                    fontSize: 15,
-                  ),
+                  style: TextStyle(color: isDark ? AppColors.neutral100 : AppColors.neutral900, fontSize: 15),
                 ),
               ),
             ),
@@ -485,9 +345,7 @@ class _ChatScreenState extends State<ChatScreen> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, AppColors.secondary],
-                ),
+                gradient: const LinearGradient(colors: [AppColors.primary, AppColors.secondary]),
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
@@ -517,61 +375,30 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendMessage() async {
     final messageText = _messageController.text.trim();
-    if (messageText.isEmpty || _token == null || _publicKey == null) return;
+    if (messageText.isEmpty) return;
 
     try {
       _messageController.clear();
-
-      // Подготавливаем получателей
-      final recipients = <Recipient>[];
-
-      // Добавляем себя
-      recipients.add(Recipient(userId: chat.userId, publicKey: _publicKey!));
-
-      // Добавляем собеседника, используя публичный ключ из чата
-      try {
-        final companionPubKey = Crypto.publicKeyFromString(
-          chat.companionPubKey,
-        );
-        recipients.add(
-          Recipient(userId: chat.companionId, publicKey: companionPubKey),
-        );
-      } catch (e) {
-        logger.e('Ошибка парсинга публичного ключа собеседника: $e');
-        // Продолжаем без собеседника, сообщение будет отправлено только себе
-      }
-
-      // Отправляем сообщение через WebSocket
-      final success = await _webSocketProvider.sendMessage(
-        messageText,
-        recipients,
-      );
-
+      final success = await _controller.sendMessage(messageText);
       if (!success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Ошибка отправки сообщения'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
     } catch (error) {
       logger.e('Error sending message: $error');
-
-      // Показать ошибку пользователю
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Ошибка отправки сообщения'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }

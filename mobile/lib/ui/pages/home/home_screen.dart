@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:Ren/core/utils/logout/logout.dart';
 
-import 'package:Ren/core/models/user.chats.model.dart';
+import 'package:Ren/core/models/chat.dart';
 
 import 'package:Ren/ui/widgets/desktop/desktop_home_screen.dart';
-import 'package:Ren/ui/widgets/mobile/mobile_home_screen.dart';
+import 'package:Ren/features/home/presentation/pages/mobile_home_screen.dart';
 import 'package:Ren/ui/widgets/animatedgradient.dart';
 
 class HomeScreen extends StatefulWidget {

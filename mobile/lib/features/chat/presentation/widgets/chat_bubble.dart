@@ -1,50 +1,29 @@
-import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
-import 'dart:ui';
 
-import 'package:Ren/core/models/user.messages.model.dart';
-
-import 'package:Ren/core/encryption/cryptoprovider.dart';
-import 'package:Ren/core/encryption/decryptMesseg.dart';
-
+import 'package:Ren/core/models/message.dart';
 import 'package:Ren/ui/theme/themes.dart';
 
 class ChatBubble extends StatelessWidget {
   final Messages message;
   final bool isMe;
 
-  const ChatBubble({Key? key, required this.message, required this.isMe})
-    : super(key: key);
-
-  String _decryptMessage(Messages message, CryptoProvider cryptoProvider) {
-    final currentUserId = cryptoProvider.userId!;
-    final privateKey = cryptoProvider.privateKey!;
-
-    return DecryptMessage().decryptMessage(
-      message,
-      currentUserId.toString(),
-      privateKey,
-    );
-  }
+  const ChatBubble({Key? key, required this.message, required this.isMe}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final cryptoProvider = Provider.of<CryptoProvider>(context, listen: false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final displayText = _decryptMessage(message, cryptoProvider);
+    final displayText = message.message; // текст уже расшифрован на уровне сервисов
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isMe) ...[
             _buildAvatar(context, isDark),
             const SizedBox(width: 12),
           ],
-
           Flexible(
             child: Container(
               constraints: BoxConstraints(
@@ -52,8 +31,7 @@ class ChatBubble extends StatelessWidget {
                 minWidth: 80,
               ),
               child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   Container(
                     decoration: BoxDecoration(
@@ -69,43 +47,31 @@ class ChatBubble extends StatelessWidget {
                       ],
                     ),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Текст сообщения
                           Text(
-                            displayText,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyMedium?.copyWith(
-                              color: _getMessageTextColor(isDark),
-                              fontWeight: FontWeight.w400,
-                              height: 1.4,
-                            ),
+                            displayText.isNotEmpty ? displayText : (message.messageType == 'file' ? 'Файл' : 'Сообщение'),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: _getMessageTextColor(isDark),
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.4,
+                                ),
                           ),
-
                           const SizedBox(height: 6),
-
-                          // Время и статус
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               Text(
-                                formatTime(message.createdAt),
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(
-                                  color: _getTimeTextColor(isDark),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w400,
-                                ),
+                                _formatTime(message.createdAt),
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: _getTimeTextColor(isDark),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w400,
+                                    ),
                               ),
-
                               if (isMe) ...[
                                 const SizedBox(width: 6),
                                 Icon(
@@ -124,7 +90,6 @@ class ChatBubble extends StatelessWidget {
               ),
             ),
           ),
-
           if (isMe) ...[
             const SizedBox(width: 12),
             _buildAvatar(context, isDark),
@@ -142,16 +107,10 @@ class ChatBubble extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors:
-              isDark
-                  ? [AppColors.darkCard, AppColors.neutral800]
-                  : [AppColors.lightCard, AppColors.neutral100],
+          colors: isDark ? [AppColors.darkCard, AppColors.neutral800] : [AppColors.lightCard, AppColors.neutral100],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? AppColors.neutral700 : AppColors.neutral200,
-          width: 1,
-        ),
+        border: Border.all(color: isDark ? AppColors.neutral700 : AppColors.neutral200, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
@@ -160,11 +119,7 @@ class ChatBubble extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(
-        isMe ? Icons.person : Icons.person_outline,
-        size: 16,
-        color: isDark ? AppColors.neutral300 : AppColors.neutral600,
-      ),
+      child: Icon(isMe ? Icons.person : Icons.person_outline, size: 16, color: isDark ? AppColors.neutral300 : AppColors.neutral600),
     );
   }
 
@@ -214,41 +169,12 @@ class ChatBubble extends StatelessWidget {
   }
 
   IconData _getMessageStatusIcon() {
-    // Можно добавить логику для разных статусов сообщений
     return Icons.check;
   }
 
-  String formatTime(DateTime? dateTime) {
-    if (dateTime == null) return '';
-
-    try {
-      final now = DateTime.now();
-
-      // дробные часы, как в TS: (now - date) / (1000*60*60)
-      final diffInHours =
-          now.difference(dateTime).inMilliseconds / (1000 * 60 * 60);
-
-      bool sameCalendarDay(DateTime a, DateTime b) =>
-          a.year == b.year && a.month == b.month && a.day == b.day;
-
-      String two(int n) => n.toString().padLeft(2, '0');
-
-      // Сегодня (и прошло меньше 24 часов)
-      if (diffInHours < 24 && sameCalendarDay(dateTime, now)) {
-        return '${two(dateTime.hour)}:${two(dateTime.minute)}';
-      }
-
-      // Вчера
-      final yesterday = now.subtract(Duration(days: 1));
-      if (sameCalendarDay(dateTime, yesterday)) {
-        return 'Вчера ${two(dateTime.hour)}:${two(dateTime.minute)}';
-      }
-
-      // Иначе — показать день, месяц, часы и минуты (двузначные)
-      return '${two(dateTime.day)}.${two(dateTime.month)} ${two(dateTime.hour)}:${two(dateTime.minute)}';
-    } catch (e) {
-      // В TS в catch возвращается исходная строка; здесь возвращаем toString() объекта
-      return dateTime.toString();
-    }
+  String _two(int n) => n.toString().padLeft(2, '0');
+  String _formatTime(DateTime? dt) {
+    if (dt == null) return '';
+    return '${_two(dt.day)}.${_two(dt.month)} ${_two(dt.hour)}:${_two(dt.minute)}';
   }
 }

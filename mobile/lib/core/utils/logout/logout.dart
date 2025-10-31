@@ -1,7 +1,7 @@
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Ren/core/models/notification.data.dart';
+import 'package:Ren/core/models/notification.dart';
 
 import 'package:Ren/core/encryption/cryptoprovider.dart';
 import 'package:Ren/ui/pages/splash/splash_screen.dart';

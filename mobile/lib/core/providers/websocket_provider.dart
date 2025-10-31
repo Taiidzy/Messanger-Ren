@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import 'package:Ren/core/api/websocket_service.dart';
 import 'package:Ren/core/models/websocket_message.dart';
-import 'package:Ren/core/models/user.messages.model.dart';
-import 'package:Ren/core/models/user.chats.model.dart';
+import 'package:Ren/core/models/message.dart';
+import 'package:Ren/core/models/chat.dart';
 import 'package:Ren/core/models/metadata.dart';
 import 'package:Ren/core/models/envelope.dart';
 import 'package:Ren/core/encryption/cryptoprovider.dart';

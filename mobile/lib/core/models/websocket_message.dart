@@ -1,4 +1,4 @@
-import 'package:Ren/core/models/user.messages.model.dart';
+import 'package:Ren/core/models/message.dart';
 import 'package:Ren/core/models/metadata.dart';
 
 // Базовый класс для WebSocket сообщений

@@ -5,15 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:Ren/core/encryption/cryptoprovider.dart';
 import 'package:Ren/core/services/online_status_service.dart';
 
-import 'package:Ren/core/models/user.messages.model.dart';
-import 'package:Ren/core/models/user.chats.model.dart';
+import 'package:Ren/core/models/message.dart';
+import 'package:Ren/core/models/chat.dart';
 
 import 'package:Ren/core/utils/constants/apiurl.dart';
 
-import 'package:Ren/ui/pages/chat/chat_screen.dart';
+import 'package:Ren/features/chat/presentation/chat_screen.dart';
 import 'package:Ren/ui/theme/themes.dart';
 
-import 'package:Ren/core/encryption/decryptmesseg.dart';
+// Удалён legacy decryptmesseg; тексты приходят расшифрованными
 
 
 class DesktopHomeScreen extends StatefulWidget {
@@ -82,27 +82,8 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
   }
 
   String _decryptMessage(Messages message, CryptoProvider cryptoProvider) {
-    if (message.messageType != 'text') {
-      return 'Файл';
-    }
-
-    final currentUserId = cryptoProvider.userId;
-    final privateKey = cryptoProvider.privateKey;
-
-    if (currentUserId == null || privateKey == null) {
-      return 'Сообщение';
-    }
-
-    try {
-      final text = DecryptMessage().decryptMessage(
-        message,
-        currentUserId.toString(),
-        privateKey,
-      );
-      return text.isNotEmpty ? text : 'Сообщение';
-    } catch (_) {
-      return 'Сообщение';
-    }
+    if (message.messageType != 'text') return 'Файл';
+    return message.message.isNotEmpty ? message.message : 'Сообщение';
   }
 
   // Фильтрация чатов по имени и по расшифрованному тексту последнего сообщения

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'package:Ren/core/models/user.chats.model.dart';
+import 'package:Ren/core/models/chat.dart';
 
 import 'package:Ren/core/notifications/notifications.dart';
 

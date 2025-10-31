@@ -591,7 +591,6 @@ class Crypto {
     cipher.init(false, params);
 
     final decrypted = cipher.process(ciphertext);
-    final decoder = utf8.decode(decrypted);
     // В этом месте ожидается, что формат объединения сообщения+файла извне совпадает с тем, как вы упаковываете.
     throw UnimplementedError(
       'decryptFileWithMessage: адаптируйте под формат упаковки данных',

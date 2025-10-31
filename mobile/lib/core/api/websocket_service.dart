@@ -7,12 +7,13 @@ import 'package:web_socket_channel/status.dart' as status;
 import 'package:pointycastle/export.dart';
 
 import 'package:Ren/core/models/websocket_message.dart';
-import 'package:Ren/core/models/user.messages.model.dart';
+import 'package:Ren/core/models/message.dart';
 import 'package:Ren/core/models/envelope.dart';
 import 'package:Ren/core/models/metadata.dart';
 import 'package:Ren/core/encryption/crypto.dart';
 import 'package:Ren/core/utils/constants/apiurl.dart';
 import 'package:Ren/core/utils/logger/logger.dart';
+import 'package:Ren/core/crypto/message_cipher_service.dart';
 
 class WebSocketService {
   WebSocketChannel? _channel;
@@ -25,6 +26,7 @@ class WebSocketService {
   final UserData _userData;
   final String _token;
   MessageHandlers _handlers;
+  final MessageCipherService _cipher = const MessageCipherService();
 
   // Stream контроллеры для состояния
   final StreamController<WebSocketState> _stateController =
@@ -169,11 +171,9 @@ class WebSocketService {
         return;
       }
 
-      // Расшифровываем ключ сообщения
-      final messageKey = Crypto.unwrapSymmetricKey(
-        envelope.key,
-        envelope.ephemPubKey,
-        envelope.iv,
+      // Расшифровываем ключ сообщения через общий сервис
+      final messageKey = _cipher.unwrapKeyFromEnvelope(
+        envelope,
         privateKey,
       );
 
@@ -182,7 +182,7 @@ class WebSocketService {
       // Обрабатываем разные типы сообщений
       if (messageData.messageType == 'text') {
         if (messageData.ciphertext.isNotEmpty && messageData.nonce.isNotEmpty) {
-          decryptedText = Crypto.decryptData(
+          decryptedText = _cipher.decryptText(
             messageData.ciphertext,
             messageKey,
             messageData.nonce,
@@ -190,7 +190,7 @@ class WebSocketService {
         }
       } else if (messageData.messageType == 'message_with_files') {
         if (messageData.ciphertext.isNotEmpty && messageData.nonce.isNotEmpty) {
-          decryptedText = Crypto.decryptData(
+          decryptedText = _cipher.decryptText(
             messageData.ciphertext,
             messageKey,
             messageData.nonce,
@@ -270,17 +270,15 @@ class WebSocketService {
         return;
       }
 
-      // Расшифровываем ключ сообщения
-      final messageKey = Crypto.unwrapSymmetricKey(
-        envelope.key,
-        envelope.ephemPubKey,
-        envelope.iv,
+      // Расшифровываем ключ сообщения через общий сервис
+      final messageKey = _cipher.unwrapKeyFromEnvelope(
+        envelope,
         privateKey,
       );
 
       String decryptedText = '';
       if (messageData.ciphertext.isNotEmpty && messageData.nonce.isNotEmpty) {
-        decryptedText = Crypto.decryptData(
+        decryptedText = _cipher.decryptText(
           messageData.ciphertext,
           messageKey,
           messageData.nonce,
