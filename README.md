@@ -7,6 +7,8 @@
 
 [![Licence](https://img.shields.io/github/license/Ileriayo/markdown-badges?style=for-the-badge)](./LICENSE.md)
 
+> ⚠️ **Репозиторий переехал!** Актуальная версия проекта находится здесь: [https://github.com/Taiidzy/ren](https://github.com/Taiidzy/ren)
+
 Удобный, безопасный и быстрый.
 Сквозное шифрование для сообщений и файлов, децентрализованное управление ключами, дружелюбный интерфейс и продуманная архитектура.
 
@@ -137,6 +139,6 @@ MIT — см. `LICENSE.md`.
 При создании форка, использовании всего проекта или его частей **обязательно** указывайте:
 
 * Ссылку на автора: [https://github.com/Taiidzy](https://github.com/Taiidzy)
-* Ссылку на проект: [https://github.com/Taiidzy/Messanger-Ren](https://github.com/Taiidzy/Messanger-Ren)
+* Ссылку на проект: [https://github.com/Taiidzy/ren](https://github.com/Taiidzy/ren)
 
 Это требование основано на условиях лицензии MIT и направлено на сохранение авторства и исходных ссылок.
